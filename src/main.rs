@@ -50,7 +50,8 @@ impl VisitMut for RefactorBenchmark {
                     let content = i_macro.mac.tokens.clone();
                     let parsed_functions= parse_benchmark_functions(content);
 
-                    // Iterate over the parsed benchmark functions and transform them.
+                    // Collet the transformed benchmark functions
+                    let mut transformed_functions = Vec::new();
                     for function in parsed_functions.into_iter() {
                         // Create a new Rust function item with the #[benchmark] attribute.
                         let attrs: Vec<Attribute> = vec![parse_quote!(#[benchmark])];
@@ -77,8 +78,17 @@ impl VisitMut for RefactorBenchmark {
                             },
                             block: Box::new(block),
                         });
-                        new_items.push(new_fn);
+                        transformed_functions.push(new_fn);
                     }
+                    // Create a new mod item with the transformed functions
+                    let new_mod_tokens = quote! {
+                        #[instance_benchmarks]
+                        mod benchmarks {
+                            #(#transformed_functions)*
+                        }
+                    };
+
+                    new_items.push(Item::Verbatim(new_mod_tokens));
                 },
                 _ => new_items.push(item),
             }
