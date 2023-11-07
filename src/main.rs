@@ -94,18 +94,23 @@ impl VisitMut for RefactorBenchmark {
                     let content = i_macro.mac.tokens.clone();
                     let parsed_functions = parse_benchmark_functions(content.clone());
 
-                    let parsed_params = parse_parameters(content).unwrap();
-                    //print the length of parsed_params
-                    println!("Parsed params length: {}", parsed_params.len());
-                    for param in &parsed_params {
-                        let param_tokens = quote! { #param };
-                        println!("Param tokens: {}", param_tokens.to_string());
-                    }
-
                     // Collect the transformed benchmark functions
                     let mut transformed_functions = Vec::new();
                     for function in parsed_functions.into_iter() {
-                        let _params = parse_parameters(function.block.clone());
+                        let mut parsed_params = Vec::new();
+                        match parse_parameters(function.block.clone()) {
+                            Ok(params) => {
+                                // If successful, extend the all_parsed_params vector with the parameters.
+                                parsed_params.extend(params);
+                            }
+                            Err(e) => {
+                                // If there's an error, you can choose to log it or simply ignore it.
+                                // For example, to print the error:
+                                eprintln!("warning: {} ", e);
+                                // If you wish to ignore the error, you can comment out the above line.
+                            }
+                        }
+
                         // Create a new Rust function item with the #[benchmark] attribute.
                         let attrs: Vec<Attribute> = vec![parse_quote!(#[benchmark])];
                         // Construct a raw block from the captured TokenStream
