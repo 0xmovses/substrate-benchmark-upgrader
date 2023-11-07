@@ -100,8 +100,6 @@ impl VisitMut for RefactorBenchmark {
     }
 }
 
-// Assuming the structure of each benchmark function is known:
-// identifier { ... }: _<...>(...) verify { ... }
 
 fn parse_benchmark_functions(input: TokenStream) -> Vec<BenchmarkFunction> {
     let mut functions = Vec::new();
