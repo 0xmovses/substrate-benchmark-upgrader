@@ -1,22 +1,29 @@
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use regex;
-use std::{fs, iter::Peekable, result::Result};
+use std::fmt::{Debug, Display, Formatter};
+use std::{fmt, fs, iter::Peekable, result::Result};
 use syn::parse::Parser;
-use syn::{
-    braced,
-    parse::{Parse, ParseStream, Result as ParseResult},
-    parse2, parse_quote,
-    punctuated::Punctuated,
-    token::Semi,
-    visit_mut::VisitMut,
-    Attribute, Block, Expr, File, Generics, Ident, Item, ItemFn, ItemMacro, ItemMod, ReturnType,
-    Signature, Stmt, Token, Visibility,
-};
+use syn::{braced,  parse::{Parse, ParseStream, Result as ParseResult}, parse2, parse_quote, punctuated::Punctuated, token::Semi, visit_mut::VisitMut, Attribute, Block, Expr, File, Generics, Ident, Item, ItemFn, ItemMacro, ItemMod, ReturnType, Signature, Stmt, Token, Visibility, Type, Pat, PatIdent, FnArg, PatType, VisRestricted};
+use syn::token::{Colon, Comma};
 
 enum RangeEndKind {
     Number(u8),
     Expression(Expr), // check, the DSL might not be valid syn::Expr ?
+}
+
+impl ToTokens for RangeEndKind {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            RangeEndKind::Number(num) => {
+                tokens.extend(quote! { #num });
+            }
+            RangeEndKind::Expression(expr) => {
+                // Since `Expr` already implements `ToTokens`, we can directly use it.
+                expr.to_tokens(tokens);
+            }
+        }
+    }
 }
 
 struct BenchmarkParameter {
@@ -24,6 +31,30 @@ struct BenchmarkParameter {
     range_start: u8,
     range_end: RangeEndKind,
 }
+
+impl ToTokens for BenchmarkParameter {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let name = &self.name;
+        let range_start = &self.range_start;
+        // range_end needs special handling based on its variant
+        match &self.range_end {
+            RangeEndKind::Number(num) => {
+                let range_end_tokens = quote! { #num };
+                tokens.extend(quote! {
+                    #name: Linear<#range_start, #range_end_tokens>,
+                });
+            },
+            RangeEndKind::Expression(expr) => {
+                // Since `Expr` already implements `ToTokens`, we can directly use it.
+                let range_end_tokens = quote! { { #expr } };
+                tokens.extend(quote! {
+                    #name: Linear<#range_start, #range_end_tokens>,
+                });
+            },
+        }
+    }
+}
+
 struct Items(Vec<Item>);
 
 impl Parse for Items {
@@ -61,77 +92,77 @@ struct RefactorBenchmark;
 impl VisitMut for RefactorBenchmark {
     fn visit_file_mut(&mut self, file: &mut File) {
         let mut new_items = Vec::new();
-        let mut other_items = Vec::new();
 
         for item in file.items.drain(..) {
             match item {
                 Item::Macro(i_macro) if i_macro.mac.path.is_ident("benchmarks") => {
                     let content = i_macro.mac.tokens.clone();
-                    let parsed_functions = parse_benchmark_functions(content.clone());
+                    let parsed_functions = parse_benchmark_functions(content);
 
-                    let parsed_params = parse_parameters(content).unwrap();
-                    for param in &parsed_params {
-                        println!("Param name: {}", param.name);
-                        println!("Param range start: {}", param.range_start);
-                    }
+                    for function in parsed_functions {
+                        let parsed_params = parse_parameters(function.block.clone()).unwrap(); // Assuming this returns a Vec<BenchmarkParameter>
 
-                    // Collect the transformed benchmark functions
-                    let mut transformed_functions = Vec::new();
-                    for function in parsed_functions.into_iter() {
-                        let _params = parse_parameters(function.block.clone());
-                        // Create a new Rust function item with the #[benchmark] attribute.
-                        let attrs: Vec<Attribute> = vec![parse_quote!(#[benchmark])];
-                        // Construct a raw block from the captured TokenStream
-                        let block = Block {
-                            brace_token: syn::token::Brace::default(),
-                            stmts: vec![Stmt::Item(Item::Verbatim(function.block))], // Insert the raw TokenStream
-                        };
-                        let new_fn = Item::Fn(ItemFn {
-                            attrs,
-                            vis: Visibility::Inherited,
-                            sig: Signature {
-                                constness: None,
-                                asyncness: None,
-                                unsafety: None,
-                                abi: None,
-                                fn_token: Default::default(),
-                                ident: function.name,
-                                generics: Default::default(),
-                                paren_token: Default::default(),
-                                inputs: Default::default(),
-                                variadic: None,
-                                output: ReturnType::Default,
-                            },
-                            block: Box::new(block),
-                        });
-                        transformed_functions.push(new_fn);
-                    }
-                    // Create a new mod item with the transformed functions
-                    let new_mod_tokens = quote! {
-                        #[instance_benchmarks]
-                        mod benchmarks {
-                            #(#transformed_functions)*
+                        // Construct the function arguments from parsed_params
+                        let mut fn_args = Punctuated::new();
+                        for param in parsed_params {
+                            // Construct the tokens for each parameter based on the ToTokens implementation
+                            let ty = match param.range_end {
+                                RangeEndKind::Number(num) => quote! { Linear<#param.range_start, #num> },
+                                RangeEndKind::Expression(ref expr) => quote! { Linear<#param.range_start, { #expr }> },
+                            };
+
+                            let pat = Pat::Ident(PatIdent {
+                                attrs: Vec::new(),
+                                by_ref: None,
+                                mutability: None,
+                                ident: param.name.clone(),
+                                subpat: None,
+                            });
+
+                            let arg_tokens = quote! { #pat: #ty };
+
+                            // Parse the generated tokens into a FnArg
+                            let arg: FnArg = parse2(arg_tokens)
+                                .expect("Failed to parse tokens into FnArg");
+
+                            fn_args.push_value(arg);
+                            fn_args.push_punct(Comma::default());
                         }
-                    };
 
-                    new_items.push(Item::Verbatim(new_mod_tokens));
+                        // Create the new function signature with the arguments
+                        let new_signature = Signature {
+                            constness: None,
+                            asyncness: None,
+                            unsafety: None,
+                            abi: None,
+                            fn_token: Default::default(),
+                            ident: function.name.clone(),
+                            generics: Default::default(),
+                            paren_token: Default::default(),
+                            inputs: Default::default(),
+                            variadic: None,
+                            output: ReturnType::Default,
+                        };
+
+                        let block: Block = parse2(function.block).expect("Failed to parse block");
+
+                        // Create the new ItemFn with the modified signature and the parsed block
+                        let new_fn = ItemFn {
+                            attrs: Vec::new(), // Preserve the original attributes
+                            vis: Visibility::Inherited, // Preserve the original visibility
+                            sig: new_signature,
+                            block: Box::new(block), // Use the parsed Block
+                        };
+
+                        // Convert new_fn into an Item and push it to new_items
+                        new_items.push(Item::Fn(new_fn));
+                    }
                 }
-                _ => new_items.push(item),
+                _ => new_items.push(item), // Preserve other items as they are
             }
         }
 
-        // Create a new mod with the transformed benchmark functions.
-        let new_mod_tokens = quote! {
-            #[instance_benchmarks]
-            mod benchmarks {
-                #(#new_items)*
-            }
-        };
-        // Push the new module to the list of items.
-        let new_mod = Item::Verbatim(new_mod_tokens);
-        other_items.push(new_mod);
-
-        // Update the items in the file with the new items.
+        // After processing all items, add them back into the file
         file.items = new_items;
     }
 }
@@ -185,15 +216,17 @@ fn parse_parameters(input: TokenStream) -> Result<Vec<BenchmarkParameter>, Strin
                                         // Found '=>', now look for ';'
                                         while let Some(token) = iter.next() {
                                             match token {
-                                                TokenTree::Punct(ref punct) if punct.as_char() == ';' => {
+                                                TokenTree::Punct(ref punct)
+                                                    if punct.as_char() == ';' =>
+                                                {
                                                     // Found ';', terminate the parameter declaration
                                                     break;
-                                                },
+                                                }
                                                 _ => continue, // Skip other tokens
                                             }
                                         }
                                         break; // Break from the outer loop once ';' is found
-                                    },
+                                    }
                                     _ => continue, // Skip other tokens before '=>'
                                 }
                             }
@@ -204,13 +237,13 @@ fn parse_parameters(input: TokenStream) -> Result<Vec<BenchmarkParameter>, Strin
                                 range_start,
                                 range_end,
                             });
-                        },
+                        }
                         Some(_) | None => return Err("Expected 'in' keyword".to_string()),
                     }
                 } else {
                     return Err("Expected parameter name after 'let'".to_string());
                 }
-            },
+            }
             _ => continue, // Ignore other tokens
         }
     }
@@ -222,7 +255,6 @@ fn parse_parameters(input: TokenStream) -> Result<Vec<BenchmarkParameter>, Strin
 
     Ok(params)
 }
-
 
 // A helper function to try to parse a TokenTree as a u8
 fn token_tree_to_u8(token: TokenTree) -> Result<u8, &'static str> {
