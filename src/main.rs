@@ -19,10 +19,35 @@ enum RangeEndKind {
     Expression(Expr), // check, the DSL might not be valid syn::Expr ?
 }
 
+impl ToTokens for RangeEndKind {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            RangeEndKind::Number(n) => {
+                let n = syn::LitInt::new(&n.to_string(), Span::call_site());
+                n.to_tokens(tokens);
+            }
+            RangeEndKind::Expression(expr) => expr.to_tokens(tokens),
+        }
+    }
+}
+
 struct BenchmarkParameter {
     name: Ident,
     range_start: u8,
     range_end: RangeEndKind,
+}
+
+impl ToTokens for BenchmarkParameter {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let name = &self.name;
+        let range_start = &self.range_start;
+        let range_end = &self.range_end;
+        tokens.extend(quote! {
+            for #name in #range_start..#range_end {
+                // benchmark contents
+            }
+        });
+    }
 }
 struct Items(Vec<Item>);
 
@@ -70,9 +95,11 @@ impl VisitMut for RefactorBenchmark {
                     let parsed_functions = parse_benchmark_functions(content.clone());
 
                     let parsed_params = parse_parameters(content).unwrap();
+                    //print the length of parsed_params
+                    println!("Parsed params length: {}", parsed_params.len());
                     for param in &parsed_params {
-                        println!("Param name: {}", param.name);
-                        println!("Param range start: {}", param.range_start);
+                        let param_tokens = quote! { #param };
+                        println!("Param tokens: {}", param_tokens.to_string());
                     }
 
                     // Collect the transformed benchmark functions
@@ -216,8 +243,8 @@ fn parse_parameters(input: TokenStream) -> Result<Vec<BenchmarkParameter>, Strin
     }
 
     for param in &params {
-        println!("Param name: {}", param.name);
-        println!("Param range start: {}", param.range_start);
+        let param_tokens = quote! { #param };
+        println!("Param tokens: {}", param_tokens.to_string());
     }
 
     Ok(params)
