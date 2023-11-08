@@ -1,18 +1,12 @@
+mod parser;
+
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use regex;
-use std::{fs, iter::Peekable, result::Result};
+use std::{fmt, fs, iter::Peekable, result::Result};
+use std::fmt::{Display, Formatter};
 use syn::parse::Parser;
-use syn::{
-    braced,
-    parse::{Parse, ParseStream, Result as ParseResult},
-    parse2, parse_quote,
-    punctuated::Punctuated,
-    token::Semi,
-    visit_mut::VisitMut,
-    Attribute, Block, Expr, File, Generics, Ident, Item, ItemFn, ItemMacro, ItemMod, ReturnType,
-    Signature, Stmt, Token, Visibility,
-};
+use syn::{braced, parse::{Parse, ParseStream, Result as ParseResult}, parse2, parse_quote, punctuated::Punctuated, token::Semi, visit_mut::VisitMut, Attribute, Block, Expr, File, Generics, Ident, Item, ItemFn, ItemMacro, ItemMod, ReturnType, Signature, Stmt, Token, Visibility, FnArg};
 
 enum RangeEndKind {
     Number(u8),
@@ -35,6 +29,27 @@ struct BenchmarkParameter {
     name: Ident,
     range_start: u8,
     range_end: RangeEndKind,
+}
+
+impl Display for BenchmarkParameter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let range_end_tokens = match &self.range_end {
+            RangeEndKind::Number(n) => n.to_string(),
+            RangeEndKind::Expression(expr) => {
+                let expr_tokens = quote! { #expr };
+                expr_tokens.to_string()
+            }
+        };
+
+        // This assumes that the `range_start` is the start and `range_end_tokens` is the end of the `Linear` range.
+        write!(
+            f,
+            "{}: Linear<{}, {{ {} }}>",
+            self.name,
+            self.range_start,
+            range_end_tokens
+        )
+    }
 }
 
 impl ToTokens for BenchmarkParameter {
@@ -99,17 +114,16 @@ impl VisitMut for RefactorBenchmark {
                     for function in parsed_functions.into_iter() {
                         let mut parsed_params = Vec::new();
                         match parse_parameters(function.block.clone()) {
-                            Ok(params) => {
-                                // If successful, extend the all_parsed_params vector with the parameters.
-                                parsed_params.extend(params);
-                            }
-                            Err(e) => {
-                                // If there's an error, you can choose to log it or simply ignore it.
-                                // For example, to print the error:
-                                eprintln!("warning: {} ", e);
-                                // If you wish to ignore the error, you can comment out the above line.
-                            }
+                            Ok(params) => parsed_params.extend(params),
+                            Err(e) => eprintln!("warning: {} ", e),
                         }
+
+                        let fn_args: Punctuated<FnArg, Token![,]> = parsed_params
+                            .into_iter()
+                            .map(|param| {
+                                syn::parse_str::<FnArg>(&format!("{}", param)).expect("Failed to parse parameter")
+                            })
+                            .collect();
 
                         // Create a new Rust function item with the #[benchmark] attribute.
                         let attrs: Vec<Attribute> = vec![parse_quote!(#[benchmark])];
@@ -130,7 +144,7 @@ impl VisitMut for RefactorBenchmark {
                                 ident: function.name,
                                 generics: Default::default(),
                                 paren_token: Default::default(),
-                                inputs: Default::default(),
+                                inputs: fn_args,
                                 variadic: None,
                                 output: ReturnType::Default,
                             },
@@ -248,10 +262,11 @@ fn parse_parameters(input: TokenStream) -> Result<Vec<BenchmarkParameter>, Strin
     }
 
     for param in &params {
-        let param_tokens = quote! { #param };
-        println!("Param tokens: {}", param_tokens.to_string());
+        let range_end_tokens = quote! { #param.range_end };
+        //name range_start range_end
+        println!("{} {}", param.name, param.range_start);
+        println!("{} {}", param.name, range_end_tokens.to_string());
     }
-
     Ok(params)
 }
 
@@ -293,7 +308,7 @@ fn main() {
     let mut file_ast: File = syn::parse_str(&file_contents).expect("Failed to parse file");
     benchmark.visit_file_mut(&mut file_ast);
     let tokens = quote! { #file_ast };
-    //println!("File AST is: {}", tokens.to_string());
+    println!("File AST is: {}", tokens.to_string());
 }
 
 #[cfg(test)]
