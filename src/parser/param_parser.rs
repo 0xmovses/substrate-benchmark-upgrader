@@ -9,11 +9,9 @@ use nom::{
     sequence::{preceded, terminated, tuple},
     IResult,
 };
-use nom::error::context;
-use nom::sequence::delimited;
 use proc_macro2::Ident;
 
-pub struct Parser;
+pub struct ParamParser;
 #[derive(Debug, PartialEq)]
 pub enum RangeEndKind {
     Constant(String),
@@ -26,15 +24,14 @@ struct BenchmarkParameter {
     range_end: RangeEndKind,
 }
 
-impl Parser {
-
+impl ParamParser {
     /// Parses the range start
-    pub fn param_range_start(input: &str) -> IResult<&str, u8> {
+    pub fn range_start(input: &str) -> IResult<&str, u8> {
         preceded(multispace0, nom::character::complete::u8)(input)
     }
 
     /// Main range end parser that tries both parsers
-    pub fn param_range_end(input: &str) -> IResult<&str, RangeEndKind> {
+    pub fn range_end(input: &str) -> IResult<&str, RangeEndKind> {
         preceded(
             tuple((multispace0, tag(".."), multispace0)),
             alt((Self::constant, Self::expression)),
@@ -83,7 +80,7 @@ impl Parser {
         tag("in")(input)
     }
 
-    // Parser that ignores characters after '=>'
+    // ParamParser that ignores characters after '=>'
     pub fn ignore_after_arrow(input: &str) -> IResult<&str, &str> {
         terminated(multispace1, preceded(tag("=>"), multispace1))(input)
     }
@@ -97,44 +94,39 @@ mod tests {
     #[test]
     fn test_parse_let() {
         let input = "let";
-        let (_, result) = Parser::item_let(input).unwrap();
+        let (_, result) = ParamParser::item_let(input).unwrap();
         assert_eq!(result, "let");
     }
-
     #[test]
     fn test_parse_in() {
         let input = "in";
-        let (_, result) = Parser::item_in(input).unwrap();
+        let (_, result) = ParamParser::item_in(input).unwrap();
         assert_eq!(result, "in");
     }
-
     #[test]
     fn test_parse_range_start() {
         let input = "42";
-        let (_, result) = Parser::param_range_start(input).unwrap();
+        let (_, result) = ParamParser::range_start(input).unwrap();
         assert_eq!(result, 42);
     }
-
     #[test]
-    fn test_param_range_end_with_constant() {
+    fn test_range_end_with_constant() {
         let input = ".. MAX_BYTES;";
-        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        let (remaining, result) = ParamParser::range_end(input).unwrap();
         assert_eq!(result, Constant("MAX_BYTES".to_string()));
         assert_eq!(remaining, "");
     }
-
     #[test]
-    fn test_param_range_end_with_expression_semicolon() {
+    fn test_range_end_with_expression_semicolon() {
         let input = ".. T::MaxRegistrars::get() - 1;";
-        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        let (remaining, result) = ParamParser::range_end(input).unwrap();
         assert_eq!(result, Expression("T::MaxRegistrars::get() - 1".to_string()));
         assert_eq!(remaining, "");
     }
-
     #[test]
-    fn test_param_range_end_with_expression_arrow() {
+    fn test_range_end_with_expression_arrow() {
         let input = ".. T::MaxRegistrars::get() =>";
-        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        let (remaining, result) = ParamParser::range_end(input).unwrap();
         assert_eq!(result, Expression("T::MaxRegistrars::get()".to_string()));
         assert_eq!(remaining, "");
     }
