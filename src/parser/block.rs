@@ -37,13 +37,28 @@ impl BlockParser {
     }
 
     pub fn function(input: &str) -> IResult<&str, &str> {
-        recognize(preceded(
-            multispace0,
-            terminated(
-                separated_list1(tag("_"), alpha1), // At least one alphabetic character, possibly with underscores
-                preceded(multispace0, char('{')), // Optional whitespace followed by an opening brace
+        terminated(
+            preceded(
+                multispace0,
+                recognize(separated_list1(tag("_"), alpha1))
             ),
-        ))(input)
+            preceded(multispace0, char('{'))
+        )(input)
+    }
+}
+
+pub struct BlockWriter;
+
+impl BlockWriter {
+    pub fn mod_item(benchmark_type: &str) -> String {
+        format!("#[instance_benchmarks]\nmod {} {{\n\n}}", benchmark_type)
+    }
+
+    pub fn fn_item(function_name: &str) -> String {
+        format!(
+            "#[benchmark]\nfn {}() -> Result<(), BenchmarkError> {{\n\n}}",
+            function_name
+        )
     }
 }
 
@@ -61,14 +76,7 @@ mod tests {
     fn test_dispatch_should_call_function() {
         let input = "propose_proposed {";
         let (_, parsed) = BlockParser::dispatch(input).unwrap();
-        assert_eq!(parsed, "propose_proposed {");
-    }
-
-    #[test]
-    fn test_benchmarks() {
-        let input = "benchmarks!";
-        let (_, parsed) = BlockParser::benchmark(input).unwrap();
-        assert_eq!(parsed, "benchmarks");
+        assert_eq!(parsed, "propose_proposed");
     }
 
     #[test]
@@ -89,27 +97,45 @@ mod tests {
     fn test_parse_valid_function_call() {
         let input = "propose_proposed {";
         let (_, parsed) = BlockParser::function(input).unwrap();
-        assert_eq!(parsed, "propose_proposed {");
+        assert_eq!(parsed, "propose_proposed");
     }
 
     #[test]
     fn test_parse_verify_function_call() {
         let input = "verify {";
         let (_, parsed) = BlockParser::function(input).unwrap();
-        assert_eq!(parsed, "verify {");
+        assert_eq!(parsed, "verify");
     }
 
     #[test]
     fn test_parse_function_call_with_whitespace() {
         let input = "   propose_proposed {"; // Leading whitespace
         let (_, parsed) = BlockParser::function(input).unwrap();
-        assert_eq!(parsed, "   propose_proposed {");
+        assert_eq!(parsed, "propose_proposed");
     }
 
     #[test]
     fn test_parse_function_call_with_new_name() {
         let input = "propose_proposed_with_new_name {";
         let (_, parsed) = BlockParser::function(input).unwrap();
-        assert_eq!(parsed, "propose_proposed_with_new_name {");
+        assert_eq!(parsed, "propose_proposed_with_new_name");
+    }
+
+    #[test]
+    fn test_mod_item_generation() {
+        let input = "benchmarks!";
+        let (_, parsed) = BlockParser::benchmark(input).unwrap();
+        let expected = "#[instance_benchmarks]\nmod benchmarks {\n\n}";
+        let actual = BlockWriter::mod_item(parsed);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_fn_item_generation() {
+        let input = "propose_proposed {";
+        let (_, parsed) = BlockParser::function(input).unwrap();
+        let expected = "#[benchmark]\nfn propose_proposed() -> Result<(), BenchmarkError> {\n\n}";
+        let actual = BlockWriter::fn_item(parsed);
+        assert_eq!(actual, expected);
     }
 }
