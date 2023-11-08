@@ -1,70 +1,141 @@
+use nom::branch::alt;
+use nom::combinator::{map_res, recognize, value};
+use nom::multi::{many0_count, many_till};
 use nom::{
-    IResult, character::complete::{multispace1, char, u8 as nom_u8}, sequence::{preceded, terminated, tuple}, combinator::map,
-    bytes::complete::tag, error::ParseError,
+    bytes::complete::{tag, take_until, take_while_m_n},
+    character::complete::{alpha1, alphanumeric1, char, anychar, multispace0, multispace1, u8 as nom_u8},
+    combinator::map,
+    error::ParseError,
+    sequence::{preceded, terminated, tuple},
+    IResult,
 };
+use nom::error::context;
+use nom::sequence::delimited;
+use proc_macro2::Ident;
 
-// Helper parsers
-fn parse_let(input: &str) -> IResult<&str, &str> {
-    tag("let")(input)
+pub struct Parser;
+#[derive(Debug, PartialEq)]
+pub enum RangeEndKind {
+    Constant(String),
+    Expression(String), // check, the DSL might not be valid syn::Expr ?
 }
 
-fn parse_in(input: &str) -> IResult<&str, &str> {
-    tag("in")(input)
+struct BenchmarkParameter {
+    name: Ident,
+    range_start: u8,
+    range_end: RangeEndKind,
 }
 
-// Parses the range start, just a u8 for now
-fn parse_range_start(input: &str) -> IResult<&str, u8> {
-    preceded(multispace1, nom_u8)(input)
+impl Parser {
+
+    /// Parses the range start
+    pub fn param_range_start(input: &str) -> IResult<&str, u8> {
+        preceded(multispace0, nom::character::complete::u8)(input)
+    }
+
+    /// Main range end parser that tries both parsers
+    pub fn param_range_end(input: &str) -> IResult<&str, RangeEndKind> {
+        preceded(
+            tuple((multispace0, tag(".."), multispace0)),
+            alt((Self::constant, Self::expression)),
+        )(input)
+    }
+
+    /// Parses a constant range end, which is a string of uppercase letters
+    fn constant(input: &str) -> IResult<&str, RangeEndKind> {
+        let parse_identifier = recognize(preceded(
+            alpha1,
+            many0_count(terminated(
+                take_while_m_n(1, 1, |c: char| c == '_' || c.is_alphanumeric()),
+                alphanumeric1,
+            )),
+        ));
+        map(terminated(parse_identifier, char(';')), |constant: &str| {
+            RangeEndKind::Constant(constant.to_string())
+        })(input)
+    }
+
+    // to parse an expression which may end with a semicolon or arrow
+    fn expression(input: &str) -> IResult<&str, RangeEndKind> {
+        let (input, expr) = alt((
+            Self::till_semi, // Parse till semicolon
+            Self::till_arrow, // Parse till arrow
+        ))(input)?;
+
+        Ok((input, RangeEndKind::Expression(expr.trim().to_string())))
+    }
+
+    // Parse until a semicolon is encountered
+    fn till_semi(input: &str) -> IResult<&str, &str> {
+        terminated(take_until(";"), char(';'))(input)
+    }
+
+    // Parse until an arrow "=>" is encountered
+    pub fn till_arrow(input: &str) -> IResult<&str, &str> {
+        terminated(take_until("=>"), tag("=>"))(input)
+    }
+
+    pub fn item_let(input: &str) -> IResult<&str, &str> {
+        tag("let")(input)
+    }
+
+    pub fn item_in(input: &str) -> IResult<&str, &str> {
+        tag("in")(input)
+    }
+
+    // Parser that ignores characters after '=>'
+    pub fn ignore_after_arrow(input: &str) -> IResult<&str, &str> {
+        terminated(multispace1, preceded(tag("=>"), multispace1))(input)
+    }
 }
-
-// Stub for the range end parser
-fn parse_range_end(input: &str) -> IResult<&str, &str> {
-    // Placeholder logic for parsing the range end
-    tag("T::MaxRegistrars::get() - 1")(input)
-}
-
-// Parser that ignores characters after '=>'
-fn ignore_after_arrow(input: &str) -> IResult<&str, &str> {
-    terminated(multispace1, preceded(tag("=>"), multispace1))(input)
-}
-
-
 
 #[cfg(test)]
 mod tests {
+    use super::RangeEndKind::*;
     use super::*;
 
     #[test]
     fn test_parse_let() {
         let input = "let";
-        assert_eq!(parse_let(input), Ok(("", "let")));
+        let (_, result) = Parser::item_let(input).unwrap();
+        assert_eq!(result, "let");
     }
 
     #[test]
     fn test_parse_in() {
-        let input = "in"; // Including spaces to test the parser's robustness
-        assert_eq!(parse_in(input), Ok(("", "in")));
+        let input = "in";
+        let (_, result) = Parser::item_in(input).unwrap();
+        assert_eq!(result, "in");
     }
 
     #[test]
     fn test_parse_range_start() {
-        let input = " 42"; // Including leading space
-        assert_eq!(parse_range_start(input), Ok(("", 42)));
+        let input = "42";
+        let (_, result) = Parser::param_range_start(input).unwrap();
+        assert_eq!(result, 42);
     }
 
     #[test]
-    fn test_parse_range_end() {
-        let input = "T::MaxRegistrars::get() - 1";
-        assert_eq!(parse_range_end(input), Ok(("", "T::MaxRegistrars::get() - 1")));
+    fn test_param_range_end_with_constant() {
+        let input = ".. MAX_BYTES;";
+        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        assert_eq!(result, Constant("MAX_BYTES".to_string()));
+        assert_eq!(remaining, "");
     }
 
     #[test]
-    fn test_ignore_after_arrow() {
-        let input = " => some irrelevant stuff";
-        assert_eq!(ignore_after_arrow(input), Ok(("some irrelevant stuff", " ")));
+    fn test_param_range_end_with_expression_semicolon() {
+        let input = ".. T::MaxRegistrars::get() - 1;";
+        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        assert_eq!(result, Expression("T::MaxRegistrars::get() - 1".to_string()));
+        assert_eq!(remaining, "");
     }
 
-    fn test_parse_parameter() {
-        let input = "let r in 1 .. T::MaxRegistrars::get() - 1 =>";
+    #[test]
+    fn test_param_range_end_with_expression_arrow() {
+        let input = ".. T::MaxRegistrars::get() =>";
+        let (remaining, result) = Parser::param_range_end(input).unwrap();
+        assert_eq!(result, Expression("T::MaxRegistrars::get()".to_string()));
+        assert_eq!(remaining, "");
     }
 }
