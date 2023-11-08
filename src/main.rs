@@ -1,5 +1,4 @@
 mod parser;
-
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use regex;
@@ -17,5 +16,4 @@ use syn::{
     ReturnType, Signature, Stmt, Token, Visibility,
 };
 
-struct Items(Vec<Item>);
 fn main() {}

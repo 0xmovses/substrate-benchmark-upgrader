@@ -2,9 +2,9 @@ use nom::branch::alt;
 use nom::combinator::{map_res, recognize, value};
 use nom::multi::{many0_count, many_till};
 use nom::{
-    bytes::complete::{tag, take_until, take_while_m_n},
-    character::complete::{alpha1, alphanumeric1, char, anychar, multispace0, multispace1, u8 as nom_u8},
-    combinator::map,
+    bytes::complete::{tag, take_until, take_while_m_n, },
+    character::complete::{alpha1, alphanumeric1, char, anychar, multispace0, digit1, multispace1, u8 as nom_u8},
+    combinator::{map, cut},
     error::ParseError,
     sequence::{preceded, terminated, tuple},
     IResult,
@@ -12,6 +12,12 @@ use nom::{
 use proc_macro2::Ident;
 
 pub struct ParamParser;
+
+#[derive(Debug, PartialEq)]
+pub enum Range {
+    Start(u8),
+    End(RangeEndKind),
+}
 #[derive(Debug, PartialEq)]
 pub enum RangeEndKind {
     Constant(String),
@@ -25,8 +31,34 @@ struct BenchmarkParameter {
 }
 
 impl ParamParser {
+    pub fn dispatch(input: &str) -> IResult<&str, Range> {
+        if input.trim_start().starts_with("let ") {
+            println!("Dispatching to after_let");
+            // Detect the 'let' keyword, which starts a parameter declaration.
+            // The logic after 'let' would determine what specific parsing function to call.
+            // For now, we're assuming the next relevant parse after 'let' would be range_start.
+            Self::after_let(input)
+        } else {
+            Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))
+        }
+    }
+
+    fn after_let(input: &str) -> IResult<&str, Range> {
+        let (input, _) = tag("let ")(input.trim())?; // Confirm 'let' keyword is present
+        let (input, _) = multispace0(input)?;        // Consume optional whitespace
+        let (input, _) = alpha1(input)?;             // Consume the variable name
+        let (input, _) = multispace0(input)?;        // Consume optional whitespace after variable name
+        let (input, _) = tag("in")(input)?;          // Confirm 'in' keyword is present
+        let (input, _) = multispace0(input)?;        // Consume optional whitespace after 'in'
+        let (input, range_start_val) = digit1(input)?; // Parse the range start value
+
+        // Convert the digit string to a u8 and wrap it in Range::Start
+        let range_start_val = range_start_val.parse::<u8>().unwrap();
+        Ok((input, Range::Start(range_start_val)))
+    }
     /// Parses the range start
     pub fn range_start(input: &str) -> IResult<&str, u8> {
+        println!("range_start: input: {:?}", input);
         preceded(multispace0, nom::character::complete::u8)(input)
     }
 
@@ -129,5 +161,29 @@ mod tests {
         let (remaining, result) = ParamParser::range_end(input).unwrap();
         assert_eq!(result, Expression("T::MaxRegistrars::get()".to_string()));
         assert_eq!(remaining, "");
+    }
+
+    #[test]
+    fn test_dispatch_range_start_with_range_operator() {
+        let input = "let r in 1 ..";
+        match ParamParser::dispatch(input) {
+            Ok((remaining, Range::Start(value))) => {
+                assert_eq!(value, 1);
+            },
+            Err(e) => panic!("Failed to dispatch to range_start with range operator: {:?}", e),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn test_dispatch_range_start_without_range_operator() {
+        let input = "let r in 1";
+        match ParamParser::dispatch(input) {
+            Ok((remaining, Range::Start(value))) => {
+                assert_eq!(value, 1);
+            },
+            Err(e) => panic!("Failed to dispatch to range_start without range operator: {:?}", e),
+            _ => {}
+        }
     }
 }
