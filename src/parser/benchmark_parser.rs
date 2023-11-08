@@ -7,5 +7,4 @@ pub enum ParsedElement {
     FnParam(String),
 }
 
-impl BenchmarkParser {
-}
+impl BenchmarkParser {}

@@ -1,15 +1,15 @@
-use nom::{
-    IResult,
-    bytes::complete::tag,
-    branch::alt,
-    combinator::map,
-    sequence::preceded,
-    character::complete::{multispace0, alpha1, multispace1, char},
-};
 use nom::combinator::{map_parser, not, peek, recognize};
 use nom::error::context;
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, separated_pair, terminated, tuple};
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{alpha1, char, multispace0, multispace1},
+    combinator::map,
+    sequence::preceded,
+    IResult,
+};
 
 pub struct BlockParser;
 
@@ -29,21 +29,21 @@ impl BlockParser {
             multispace0, // Optional whitespace
             alt((
                 map(tag("benchmarks!"), |_| "benchmarks"),
-                map(tag("benchmarks_instance_pallet!"), |_| "benchmarks_instance_pallet"),
+                map(tag("benchmarks_instance_pallet!"), |_| {
+                    "benchmarks_instance_pallet"
+                }),
             )),
         )(input)
     }
 
     pub fn function(input: &str) -> IResult<&str, &str> {
-        recognize(
-            preceded(
-                multispace0,
-                terminated(
-                    separated_list1(tag("_"), alpha1), // At least one alphabetic character, possibly with underscores
-                    preceded(multispace0, char('{'))   // Optional whitespace followed by an opening brace
-                )
-            )
-        )(input)
+        recognize(preceded(
+            multispace0,
+            terminated(
+                separated_list1(tag("_"), alpha1), // At least one alphabetic character, possibly with underscores
+                preceded(multispace0, char('{')), // Optional whitespace followed by an opening brace
+            ),
+        ))(input)
     }
 }
 
