@@ -1,3 +1,4 @@
+use syn::{Item, parse_str};
 use crate::parser::block::BlockParser;
 use crate::parser::param::BenchmarkParameter;
 
@@ -54,6 +55,7 @@ impl Lexer {
             Ok(blocks)
         }
     }
+
 }
 
 #[cfg(test)]

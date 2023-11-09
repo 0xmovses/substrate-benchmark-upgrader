@@ -13,6 +13,9 @@ use nom::{
 use crate::lexer::{BenchmarkLine, LineKind};
 use crate::parser::param::ParamParser;
 use anyhow::{Result, anyhow};
+use quote::quote;
+use syn::{Item, ItemFn, ItemMod, parse_quote};
+
 pub struct BlockParser;
 
 impl BlockParser {
@@ -158,6 +161,36 @@ impl BlockWriter {
             "#[benchmark]\nfn {}() -> Result<(), BenchmarkError> {{\n\n}}",
             function_name
         )
+    }
+
+    pub fn fn_into_mod(ast: Vec<Item>) -> Result<String> {
+        let mut module: Option<ItemMod> = None;
+        let mut functions: Vec<ItemFn> = Vec::new();
+
+        for item in ast {
+            match item {
+                Item::Mod(item_mod) => {
+                    module = Some(item_mod);
+                },
+                Item::Fn(item_fn) => {
+                    functions.push(item_fn);
+                },
+                _ => {},
+            }
+        }
+
+        let mut module = module.ok_or_else(|| anyhow!("fn_into_mod error"))?;
+
+        // Insert functions into the module's content
+        if let Some((_brace, content)) = &mut module.content {
+            for function in functions {
+                content.push(Item::Fn(function));
+            }
+        } else {
+            module.content = Some((syn::token::Brace::default(), functions.into_iter().map(Item::Fn).collect()));
+        }
+
+        Ok(quote!(#module).to_string())
     }
 }
 

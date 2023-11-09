@@ -1,6 +1,8 @@
-use crate::lexer::{BenchmarkLine, LineKind};
+use crate::lexer::{BenchmarkLine, LineKind, Lexer};
 use crate::parser::{block::{BlockParser, BlockWriter}, param::{ParamParser, ParamWriter}};
 use anyhow::{Result, anyhow};
+use syn::{Item, parse_str};
+
 pub struct Writer;
 
 impl Writer {
@@ -29,15 +31,13 @@ impl Writer {
                         println!("\n -> is FnParam");
                         let fn_input = ParamWriter::fn_input(&param_content);
                         if let Some(fn_signature) = gen.last() {
-                            match ParamWriter::fn_gen(fn_input, fn_signature) {
-                                Ok(output) => {
-                                    gen.pop(); // we need to remove as we're overwriting this
-                                    gen.push(output);
-                                }
-                                Err(e) => {
-                                    return Err(anyhow!("Error parsing parameter: {:?}", e))
-                                }
-                            }
+                            let complete_sig = ParamWriter::fn_gen(fn_input, fn_signature)?;
+
+                            gen.pop();
+                            gen.push(complete_sig);
+
+                            let ast = parse_to_ast(gen.clone())?;
+                            gen.push(BlockWriter::fn_into_mod(ast)?);
                         }
                     }
                 }
@@ -55,10 +55,19 @@ impl Writer {
                     println!("\n Other Case No output");
                 }
             }
-            //println!("\n Gen: {}", gen);
+            println!("\n Gen: {:?}", gen);
         }
         Ok(gen)
     }
+}
+
+pub fn parse_to_ast(lines: Vec<String>) -> Result<Vec<Item>> {
+    let mut ast_nodes: Vec<Item> = Vec::new();
+    for line in lines {
+        let ast_node = parse_str::<Item>(&line)?;
+        ast_nodes.push(ast_node);
+    }
+    Ok(ast_nodes)
 }
 
 #[cfg(test)]
