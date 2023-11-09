@@ -1,4 +1,6 @@
 mod parser;
+mod generator;
+mod lexer;
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use regex;
