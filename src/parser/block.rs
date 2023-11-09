@@ -10,46 +10,85 @@ use nom::{
     sequence::preceded,
     IResult,
 };
+use crate::lexer::{BenchmarkLine, LineKind};
 use crate::parser::param::ParamParser;
 
 pub struct BlockParser;
 
 impl BlockParser {
-    pub fn dispatch(line: &str) -> IResult<&str, &str> {
-        println!("\ninput on dispatch: \n{}\n", line.trim_start());
+    pub fn dispatch(line: &str) -> Result<BenchmarkLine, String>{
+        let trimmed_line = line.trim_start();
 
-        if line.trim_start().starts_with("benchmarks") {
-            Self::benchmark(line)
-        } else if line.trim_start().starts_with("let"){
-            match ParamParser::dispatch(line) {
-                Ok((remaining, param)) => {
-                    println!("\ngot ok for dispatch: \n{:?}\n", param);
-                    Ok((remaining, "param"))
+        match trimmed_line {
+            _ if trimmed_line.starts_with("benchmarks") => {
+               match Self::benchmark(line) {
+                   Ok((_remaining, parsed)) => {
+                       Ok(BenchmarkLine{
+                           head: Some(parsed.to_string()),
+                           kind: LineKind::Mod,
+                           content: None,
+                           param_content: None,
+                       })
+                   },
+                   Err(e) => {
+                       Err(format!("Error parsing benchmark: {:?}", e))
+                   }
+               }
+            },
+            _ if trimmed_line.starts_with("let") => {
+                match ParamParser::dispatch(line) {
+                    Ok((_remaining, parsed)) => {
+                        Ok(BenchmarkLine{
+                            head: None,
+                            kind: LineKind::Content,
+                            content: None,
+                            param_content: Some(parsed),
+                        })
+                    },
+                    Err(e) => {
+                        Err(e.to_string())
+                    }
                 }
-                Err(e) => {
-                    println!("\ngot err for dispatch: \n{:?}\n", e);
-                    Err(e)
+            },
+            _ if trimmed_line.starts_with("ensure!") => {
+                match Self::ensure(line) {
+                    Ok((_remaining, parsed)) => {
+                        Ok(BenchmarkLine{
+                            head: None,
+                            kind: LineKind::Ensure,
+                            content: Some(parsed.to_string()),
+                            param_content: None,
+                        })
+                    },
+                    Err(e) => {
+                        Err(e.to_string())
+                    }
                 }
-            }
-        } else if line.trim_start().starts_with("ensure!") {
-            Self::ensure(line)
-        } else if line.trim_start().starts_with("(") {
-            Ok((line, ""))
-        } else if line.trim_start().starts_with("T::") {
-            Ok((line, ""))
-        } else if line.trim_start().starts_with("}: _") {
-            Ok((line, ""))
-        } else if line.trim_start().starts_with("}") {
-            Ok((line, ""))
-        }
-        else {
-            match Self::function(line) {
-                Ok((remaining, parsed)) => {
-                    println!("\ngot ok for dispatch: \n{:?}\n", parsed);
-                    Ok((remaining, parsed))
-                }
-                Err(e) => {
-                    Err(e)
+            },
+            _ if trimmed_line.starts_with("(")
+                || trimmed_line.starts_with("T::")
+                || trimmed_line.starts_with("}: _")
+                || trimmed_line.starts_with("}") => {
+                Ok(BenchmarkLine{
+                    head: None,
+                    kind: LineKind::Content,
+                    content: Some(line.to_string()),
+                    param_content: None,
+                })
+            },
+            _ => {
+                match Self::function(line) {
+                    Ok((_remaining, parsed)) => {
+                        Ok(BenchmarkLine {
+                            head: Some(parsed.to_string()),
+                            kind: LineKind::Fn,
+                            content: None,
+                            param_content: None,
+                        })
+                    },
+                    Err(e) => {
+                        Err(e.to_string())
+                    }
                 }
             }
         }
@@ -128,15 +167,15 @@ mod tests {
     #[test]
     fn test_dispatch_should_call_benchmarks() {
         let input = "benchmarks!";
-        let (_, parsed) = BlockParser::dispatch(input).unwrap();
-        assert_eq!(parsed, "benchmarks");
+        let line = BlockParser::dispatch(input).unwrap();
+        assert_eq!(line.head, Some("benchmarks".to_string()));
     }
 
     #[test]
     fn test_dispatch_should_call_function() {
         let input = "propose_proposed {";
-        let (_, parsed) = BlockParser::dispatch(input).unwrap();
-        assert_eq!(parsed, "propose_proposed");
+        let line = BlockParser::dispatch(input).unwrap();
+        assert_eq!(line.head, Some("propose_proposed".to_string()));
     }
 
     #[test]

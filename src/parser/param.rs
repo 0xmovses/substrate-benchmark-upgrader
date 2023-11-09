@@ -16,9 +16,9 @@ pub struct ParamParser;
 pub struct ParamWriter;
 #[derive(Debug)]
 pub struct BenchmarkParameter {
-    name: String,
-    range_start: u8,
-    range_end: String,
+    pub name: String,
+    pub range_start: u8,
+    pub range_end: String,
 }
 
 impl Default for BenchmarkParameter {
