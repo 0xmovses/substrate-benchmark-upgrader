@@ -14,19 +14,31 @@ use nom::{
 
 pub struct ParamParser;
 pub struct ParamWriter;
+#[derive(Debug)]
 pub struct BenchmarkParameter {
     name: String,
     range_start: u8,
     range_end: String,
 }
 
+impl Default for BenchmarkParameter {
+    fn default() -> Self {
+        Self {
+            name: "".to_string(),
+            range_start: 0,
+            range_end: "".to_string(),
+        }
+    }
+}
+
 impl ParamParser {
     pub fn dispatch(input: &str) -> IResult<&str, BenchmarkParameter> {
         if input.trim_start().starts_with("let ") {
-            // Detect the 'let' keyword, which starts a parameter declaration.
-            // The logic after 'let' would determine what specific parsing function to call.
-            // For now, we're assuming the next relevant parse after 'let' would be range_start.
-            Self::let_declaration(input)
+            if input.trim_start().contains("=") {
+               Ok(("", BenchmarkParameter::default()))
+            } else {
+                Self::let_declaration(input)
+            }
         } else {
             Err(nom::Err::Error(nom::error::Error::new(
                 input,
@@ -84,7 +96,7 @@ impl ParamWriter {
             param.range_end.trim().to_string()
         };
 
-        format!("{}: Linear<{}, {}>,", param.name, param.range_start, range_end)
+        format!("{:?}: Linear<{:?}, {}>,", param.name, param.range_start, range_end)
     }
 }
 

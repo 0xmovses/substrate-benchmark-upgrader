@@ -1,26 +1,57 @@
-use nom::combinator::{map_parser, not, peek, recognize};
+use nom::combinator::{cut, map_parser, not, peek, recognize};
 use nom::error::context;
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, separated_pair, terminated, tuple};
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    bytes::complete::{tag, take_until},
     character::complete::{alpha1, char, multispace0, multispace1},
     combinator::map,
     sequence::preceded,
     IResult,
 };
+use crate::parser::param::ParamParser;
 
 pub struct BlockParser;
 
 impl BlockParser {
-    pub fn dispatch(input: &str) -> IResult<&str, &str> {
-        // Check for benchmark-related keywords
-        if input.trim_start().starts_with("benchmarks") {
-            Self::benchmark(input)
-        } else {
-            // Otherwise, assume it's a block function call
-            Self::function(input)
+    pub fn dispatch(line: &str) -> IResult<&str, &str> {
+        println!("\ninput on dispatch: \n{}\n", line.trim_start());
+
+        if line.trim_start().starts_with("benchmarks") {
+            Self::benchmark(line)
+        } else if line.trim_start().starts_with("let"){
+            match ParamParser::dispatch(line) {
+                Ok((remaining, param)) => {
+                    println!("\ngot ok for dispatch: \n{:?}\n", param);
+                    Ok((remaining, "param"))
+                }
+                Err(e) => {
+                    println!("\ngot err for dispatch: \n{:?}\n", e);
+                    Err(e)
+                }
+            }
+        } else if line.trim_start().starts_with("ensure!") {
+            Self::ensure(line)
+        } else if line.trim_start().starts_with("(") {
+            Ok((line, ""))
+        } else if line.trim_start().starts_with("T::") {
+            Ok((line, ""))
+        } else if line.trim_start().starts_with("}: _") {
+            Ok((line, ""))
+        } else if line.trim_start().starts_with("}") {
+            Ok((line, ""))
+        }
+        else {
+            match Self::function(line) {
+                Ok((remaining, parsed)) => {
+                    println!("\ngot ok for dispatch: \n{:?}\n", parsed);
+                    Ok((remaining, parsed))
+                }
+                Err(e) => {
+                    Err(e)
+                }
+            }
         }
     }
 
@@ -45,13 +76,42 @@ impl BlockParser {
             preceded(multispace0, char('{'))
         )(input)
     }
+
+    pub fn ensure(input: &str) -> IResult<&str, &str> {
+        // Ignore leading whitespace, match "ensure!", and capture everything up to the ending ");"
+        let (input, _) = preceded(multispace0, tag("ensure!"))(input)?;
+        let (input, content) = delimited(
+            char('('),
+            // Capture everything inside the parentheses
+            take_until(");"),
+            // Expect the closing ");"
+            tag(");"),
+        )(input)?;
+
+        Ok((input, content))
+    }
 }
 
 pub struct BlockWriter;
 
 impl BlockWriter {
-    pub fn mod_item(benchmark_type: &str) -> String {
-        format!("#[instance_benchmarks]\nmod {} {{\n\n}}", benchmark_type)
+    pub fn dispatch_mod(input: &str) -> String {
+        // Check for benchmark-related keywords
+        if input.trim_start().starts_with("benchmarks!") {
+            Self::mod_item()
+        } else if input.trim_start().starts_with("benchmarks_instance_pallet!") {
+            Self::mod_instance_item()
+        } else {
+            "Error: Invalid benchmark module type".to_string()
+        }
+    }
+
+    pub fn mod_item() -> String {
+        format!("#[benchmarks]\nmod benchmarks{{\n\n}}")
+    }
+
+    pub fn mod_instance_item() -> String {
+        format!("#[instance_benchmarks]\nmod benchmarks{{\n\n}}")
     }
 
     pub fn fn_item(function_name: &str) -> String {
@@ -126,7 +186,7 @@ mod tests {
         let input = "benchmarks!";
         let (_, parsed) = BlockParser::benchmark(input).unwrap();
         let expected = "#[instance_benchmarks]\nmod benchmarks {\n\n}";
-        let actual = BlockWriter::mod_item(parsed);
+        let actual = BlockWriter::dispatch_mod(parsed);
         assert_eq!(actual, expected);
     }
 
@@ -135,7 +195,7 @@ mod tests {
         let input = "propose_proposed {";
         let (_, parsed) = BlockParser::function(input).unwrap();
         let expected = "#[benchmark]\nfn propose_proposed() -> Result<(), BenchmarkError> {\n\n}";
-        let actual = BlockWriter::fn_item(parsed);
+        let actual = BlockWriter::dispatch_mod(parsed);
         assert_eq!(actual, expected);
     }
 }
