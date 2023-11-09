@@ -25,6 +25,7 @@ pub struct BenchmarkParameter {
     pub range_end: String,
 }
 
+
 impl Default for BenchmarkParameter {
     fn default() -> Self {
         Self {
@@ -83,6 +84,7 @@ impl ParamParser {
 
         // Directly capture the range end after '..'
         let (input, range_end_val) = Self::range_end(input)?;
+        println!("name: {:?}, range_start: {:?}, range_end: {:?}", name, range_start_val, range_end_val);
 
         Ok((
             input,
@@ -111,15 +113,35 @@ impl ParamParser {
 
 impl ParamWriter {
     pub fn fn_input(param: &BenchmarkParameter) -> String {
-        let range_end = if param.range_end.ends_with("get()") {
-            // Assume it's an expression if it ends with "get()"
-            format!("{{ {} }}", param.range_end.trim())
+        let range_end_expression = param.range_end.split("=>").next().unwrap_or("").trim();
+
+        // Determine if range_end is a numeric constant or an expression.
+        let is_numeric_constant = range_end_expression.parse::<u64>().is_ok();
+
+        // For numeric constants, we don't add curly braces. For expressions, we do.
+        let range_end = if is_numeric_constant {
+            range_end_expression.to_string()
         } else {
-            // Otherwise, assume it's a direct constant
-            param.range_end.trim().to_string()
+            format!("{{ {} }}", range_end_expression)
         };
 
-        format!("{:?}: Linear<{:?}, {}>,", param.name, param.range_start, range_end)
+        // Format the parameter string.
+        format!("{}: Linear<{}, {}>,", param.name, param.range_start, range_end)
+    }
+
+    pub fn fn_gen(param_input: String, fn_signature: &String) -> Result<String> {
+        if let Some(open_paren_pos) = fn_signature.find('(') {
+            if let Some(close_paren_pos) = fn_signature[open_paren_pos..].find(')') {
+                let close_paren_pos = open_paren_pos + close_paren_pos;
+
+                let start = &fn_signature[..open_paren_pos + 1];
+                let end = &fn_signature[close_paren_pos..];
+
+                // Construct the new function signature with the parameter input inserted.
+                return Ok(format!("{}{}{}", start, param_input, end));
+            }
+        }
+        Err(anyhow!("Error: The function signature does not have the correct format."))
     }
 }
 

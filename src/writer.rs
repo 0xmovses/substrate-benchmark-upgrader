@@ -17,19 +17,28 @@ impl Writer {
                        gen.push(output);
                    }
                 }
-                LineKind::FnParam => {
-                    if let Some(param_content) = line.param_content {
-                        println!("\n -> is FnParam");
-                        let output = ParamWriter::fn_input(&param_content);
+                LineKind::Fn => {
+                    if let Some(head) = line.head {
+                        println!("\n -> is Fn");
+                        let output = BlockWriter::fn_item(&head);
                         gen.push(output);
                     }
                 }
-                LineKind::Fn => {
-                    //@TODO check
-                    if let Some(content) = line.content {
-                        println!("\n -> is Fn");
-                        let output = BlockWriter::fn_item(&content);
-                        gen.push(output);
+                LineKind::FnParam => {
+                    if let Some(param_content) = line.param_content {
+                        println!("\n -> is FnParam");
+                        let fn_input = ParamWriter::fn_input(&param_content);
+                        if let Some(fn_signature) = gen.last() {
+                            match ParamWriter::fn_gen(fn_input, fn_signature) {
+                                Ok(output) => {
+                                    gen.pop(); // we need to remove as we're overwriting this
+                                    gen.push(output);
+                                }
+                                Err(e) => {
+                                    return Err(anyhow!("Error parsing parameter: {:?}", e))
+                                }
+                            }
+                        }
                     }
                 }
                 LineKind::Ensure => {
@@ -46,9 +55,8 @@ impl Writer {
                     println!("\n Other Case No output");
                 }
             }
-            println!("\n Gen: {:?}", gen);
+            //println!("\n Gen: {}", gen);
         }
-
         Ok(gen)
     }
 }
@@ -75,7 +83,10 @@ mod tests {
         let lexer = Lexer::new(input.to_string());
         let parsed_lines = lexer.parse().unwrap();
 
-        let writer = Writer::generate_module(parsed_lines).unwrap();
+        let gen_lines= Writer::generate_module(parsed_lines).unwrap();
+        for line in gen_lines {
+            println!("\n Gen: {}", line);
+        }
 
     }
 }
