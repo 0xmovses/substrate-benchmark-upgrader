@@ -12,11 +12,11 @@ use nom::{
 };
 use crate::lexer::{BenchmarkLine, LineKind};
 use crate::parser::param::ParamParser;
-
+use anyhow::{Result, anyhow};
 pub struct BlockParser;
 
 impl BlockParser {
-    pub fn dispatch(line: &str) -> Result<BenchmarkLine, String>{
+    pub fn dispatch(line: &str) -> Result<BenchmarkLine>{
         let trimmed_line = line.trim_start();
 
         match trimmed_line {
@@ -31,22 +31,15 @@ impl BlockParser {
                        })
                    },
                    Err(e) => {
-                       Err(format!("Error parsing benchmark: {:?}", e))
+                       Err(anyhow!("Error parsing benchmark: {:?}", e))
                    }
                }
             },
             _ if trimmed_line.starts_with("let") => {
                 match ParamParser::dispatch(line) {
-                    Ok((_remaining, parsed)) => {
-                        Ok(BenchmarkLine{
-                            head: None,
-                            kind: LineKind::Content,
-                            content: None,
-                            param_content: Some(parsed),
-                        })
-                    },
+                    Ok(parameter) => Ok(parameter),
                     Err(e) => {
-                        Err(e.to_string())
+                        Err(anyhow!("Error parsing parameter: {:?}", e))
                     }
                 }
             },
@@ -61,13 +54,20 @@ impl BlockParser {
                         })
                     },
                     Err(e) => {
-                        Err(e.to_string())
+                        Err(anyhow!("Error parsing ensure: {:?}", e))
                     }
                 }
             },
+            _ if trimmed_line.starts_with("}:") => {
+                Ok(BenchmarkLine{
+                   head: None,
+                    kind: LineKind::Extrinsic,
+                    content: Some(line.to_string()),
+                    param_content: None,
+                })
+            }
             _ if trimmed_line.starts_with("(")
                 || trimmed_line.starts_with("T::")
-                || trimmed_line.starts_with("}: _")
                 || trimmed_line.starts_with("}") => {
                 Ok(BenchmarkLine{
                     head: None,
@@ -87,7 +87,7 @@ impl BlockParser {
                         })
                     },
                     Err(e) => {
-                        Err(e.to_string())
+                        Err(anyhow!("Error parsing function: {:?}", e))
                     }
                 }
             }

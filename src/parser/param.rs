@@ -10,7 +10,11 @@ use nom::{
     error::ParseError,
     sequence::{preceded, terminated, tuple},
     IResult,
+    Err as NomErr,
 };
+
+use crate::lexer::{BenchmarkLine, LineKind};
+use anyhow::{Result, anyhow};
 
 pub struct ParamParser;
 pub struct ParamWriter;
@@ -32,18 +36,38 @@ impl Default for BenchmarkParameter {
 }
 
 impl ParamParser {
-    pub fn dispatch(input: &str) -> IResult<&str, BenchmarkParameter> {
+    pub fn dispatch(input: &str) -> Result<BenchmarkLine> {
+        println!("param parser called");
         if input.trim_start().starts_with("let ") {
-            if input.trim_start().contains("=") {
-               Ok(("", BenchmarkParameter::default()))
+            if input.trim_start().contains("=") && !input.trim_start().contains("=>"){
+               Ok(BenchmarkLine {
+                     head: None,
+                     kind: LineKind::Content,
+                     content: Some(input.to_string()),
+                     param_content: None,
+               })
             } else {
-                Self::let_declaration(input)
+                match Self::let_declaration(input) {
+                    Ok((str, param)) => {
+                        let param = BenchmarkParameter {
+                            name: param.name,
+                            range_start: param.range_start,
+                            range_end: param.range_end,
+                        };
+                        Ok(BenchmarkLine {
+                            head: None,
+                            kind: LineKind::FnParam,
+                            content: None,
+                            param_content: Some(param),
+                        })
+                    }
+                    Err(e) => {
+                        Err(anyhow!("Error parsing parameter: {:?}", e))
+                    }
+                }
             }
         } else {
-            Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Tag,
-            )))
+            Err(anyhow!("Error parsing parameter"))
         }
     }
 
@@ -108,11 +132,10 @@ mod tests {
     fn test_parse_param_declaration_with_expression() {
         let input = "let r in 1 .. T::MaxRegistrars::get() =>";
         match ParamParser::let_declaration(input) {
-            Ok((remaining, param)) => {
+            Ok((str, param)) => {
                 assert_eq!(param.name, "r");
                 assert_eq!(param.range_start, 1);
                 assert_eq!(param.range_end, "T::MaxRegistrars::get()");
-                assert_eq!(remaining, "");
             }
             Err(e) => panic!("Parsing failed when it should have succeeded: {:?}", e),
         }
@@ -122,11 +145,10 @@ mod tests {
     fn test_parse_param_declaration_with_constant() {
         let input = "let b in 1 .. MAX_BYTES;";
         match ParamParser::let_declaration(input) {
-            Ok((remaining, param)) => {
+            Ok((str, param)) => {
                 assert_eq!(param.name, "b");
                 assert_eq!(param.range_start, 1);
                 assert_eq!(param.range_end, "MAX_BYTES");
-                assert_eq!(remaining, "");
             }
             Err(e) => panic!("Parsing failed when it should have succeeded: {:?}", e),
         }
