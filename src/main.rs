@@ -1,6 +1,4 @@
-mod parser;
-mod generator;
-mod lexer;
+
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use regex;
@@ -18,4 +16,14 @@ use syn::{
     ReturnType, Signature, Stmt, Token, Visibility,
 };
 
-fn main() {}
+pub mod parser;
+pub mod writer;
+pub mod lexer;
+
+use lexer::Lexer;
+use writer::Writer;
+
+fn main() {
+
+}
+

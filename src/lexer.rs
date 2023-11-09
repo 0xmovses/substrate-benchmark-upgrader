@@ -39,7 +39,7 @@ impl Lexer {
                         content: line.content,
                         param_content: line.param_content,
                     };
-                    println!("/n: {:?}", benchmark_line);
+                    //println!("/n: {:?}", benchmark_line);
                     blocks.push(benchmark_line);
                 }
                 Err(e) => {

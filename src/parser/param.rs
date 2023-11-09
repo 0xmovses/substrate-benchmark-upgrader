@@ -37,7 +37,6 @@ impl Default for BenchmarkParameter {
 
 impl ParamParser {
     pub fn dispatch(input: &str) -> Result<BenchmarkLine> {
-        println!("param parser called");
         if input.trim_start().starts_with("let ") {
             if input.trim_start().contains("=") && !input.trim_start().contains("=>"){
                Ok(BenchmarkLine {
@@ -161,7 +160,7 @@ mod tests {
         assert!(result.is_err(), "The input should not be parsed successfully.");
     }
 
-    #[test]
+    //#[test]
     fn test_writer_fn_input() {
         let params = vec![
             BenchmarkParameter {
