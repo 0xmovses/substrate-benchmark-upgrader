@@ -47,6 +47,21 @@ impl BlockParser {
                 }),
                 Err(e) => Err(anyhow!("Error parsing ensure: {:?}", e)),
             },
+            _ if trimmed_line.starts_with("verify") => {
+                match Self::function(line) {
+                    Ok((_remaining, parsed)) => {
+                        let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
+                        Ok(BenchmarkLine {
+                            head: Some(parsed.to_string()),
+                            kind: LineKind::Verify,
+                            content: None,
+                            param_content: None,
+                            fn_body: Some(fn_body.to_string()),
+                        })
+                    }
+                    Err(e) => Err(anyhow!("Error parsing function: {:?}", e)),
+                }
+            }
             _ if trimmed_line.starts_with("}:") => Ok(BenchmarkLine {
                 head: None,
                 kind: LineKind::Extrinsic,

@@ -55,15 +55,14 @@ impl Writer {
                             }
                         }
                     }
-                }
-                LineKind::Ensure => {
-                    //@TODO
-                    //let output = BlockWriter::ensure(&line.content.unwrap());
-                    println!("\n TODO output Ensure");
+                },
+                LineKind::Verify => {
+                    if let Some(body) = &line.fn_body {
+                        gen.push(body.to_owned());
+                    }
                 }
                 LineKind::Extrinsic => {
-                    //@TODO
-                    //let output = BlockWriter::extrinsic(&line.content.unwrap());
+                    let output = BlockWriter::extrinsic(&line.content.unwrap());
                     println!("\n TODO output Extrinsic");
                 }
                 _ => {
