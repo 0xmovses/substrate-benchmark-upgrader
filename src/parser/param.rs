@@ -45,10 +45,11 @@ impl ParamParser {
                      kind: LineKind::Content,
                      content: Some(input.to_string()),
                      param_content: None,
+                     fn_body: None,
                })
             } else {
                 match Self::let_declaration(input) {
-                    Ok((str, param)) => {
+                    Ok((_str, param)) => {
                         let param = BenchmarkParameter {
                             name: param.name,
                             range_start: param.range_start,
@@ -59,6 +60,7 @@ impl ParamParser {
                             kind: LineKind::FnParam,
                             content: None,
                             param_content: Some(param),
+                            fn_body: None,
                         })
                     }
                     Err(e) => {

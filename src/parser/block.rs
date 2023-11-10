@@ -1,25 +1,25 @@
 use nom::combinator::{cut, map_parser, not, peek, recognize};
 use nom::error::context;
-use nom::multi::{many0, many1, separated_list0, separated_list1};
+use nom::multi::{many0, many0_count, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, separated_pair, terminated, tuple};
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{tag, take_until, take_while},
     character::complete::{alpha1, char, multispace0, multispace1},
     combinator::map,
     sequence::preceded,
     IResult,
 };
-use crate::lexer::{BenchmarkLine, LineKind};
+use crate::lexer::{BenchmarkLine, Lexer, LineKind};
 use crate::parser::param::ParamParser;
 use anyhow::{Result, anyhow};
 use quote::quote;
-use syn::{Item, ItemFn, ItemMod, parse_quote};
+use syn::{Block, Item, ItemFn, ItemMod, parse_quote};
 
 pub struct BlockParser;
 
 impl BlockParser {
-    pub fn dispatch(line: &str) -> Result<BenchmarkLine>{
+    pub fn dispatch(line: &str, lexer: &Lexer) -> Result<BenchmarkLine>{
         let trimmed_line = line.trim_start();
 
         match trimmed_line {
@@ -31,6 +31,7 @@ impl BlockParser {
                            kind: LineKind::Mod,
                            content: None,
                            param_content: None,
+                           fn_body: None,
                        })
                    },
                    Err(e) => {
@@ -54,6 +55,7 @@ impl BlockParser {
                             kind: LineKind::Ensure,
                             content: Some(parsed.to_string()),
                             param_content: None,
+                            fn_body: None,
                         })
                     },
                     Err(e) => {
@@ -67,6 +69,7 @@ impl BlockParser {
                     kind: LineKind::Extrinsic,
                     content: Some(line.to_string()),
                     param_content: None,
+                    fn_body: None,
                 })
             }
             _ if trimmed_line.starts_with("(")
@@ -77,16 +80,19 @@ impl BlockParser {
                     kind: LineKind::Content,
                     content: Some(line.to_string()),
                     param_content: None,
+                    fn_body: None,
                 })
             },
             _ => {
                 match Self::function(line) {
                     Ok((_remaining, parsed)) => {
+                        let (_remaining, fn_body )= Self::fn_body(parsed, lexer.0.as_str()).unwrap();
                         Ok(BenchmarkLine {
                             head: Some(parsed.to_string()),
                             kind: LineKind::Fn,
                             content: None,
                             param_content: None,
+                            fn_body: Some(fn_body.to_string()),
                         })
                     },
                     Err(e) => {
@@ -117,6 +123,23 @@ impl BlockParser {
             ),
             preceded(multispace0, char('{'))
         )(input)
+    }
+
+    pub fn fn_body<'a>(fn_name: &'a str, input: &'a str) -> IResult<&'a str, &'a str> {
+        //println!("fn_name: {:?}", fn_name);
+        //println!("input fn_body: {:?}", input);
+        // Find the function name in the input and move past it
+        let (input, _) = take_until(fn_name)(input)?;
+        let (input, _) = tag(fn_name)(input)?;
+
+        // Skip whitespace and find the opening brace of the function body
+        let (input, _) = multispace0(input)?;
+        let (input, _) = char('{')(input)?;
+
+        // Now capture everything inside the top-level curly braces
+        let (input, content) = take_until("}")(input)?;
+
+        Ok((input, content))
     }
 
     pub fn ensure(input: &str) -> IResult<&str, &str> {
@@ -163,11 +186,12 @@ impl BlockWriter {
         )
     }
 
-    pub fn fn_into_mod(ast: Vec<Item>) -> Result<String> {
+    pub fn fn_into_mod(ast: Vec<Item>) -> Result<ItemMod> {
         let mut module: Option<ItemMod> = None;
         let mut functions: Vec<ItemFn> = Vec::new();
 
         for item in ast {
+            println!("item: {:?}", quote!(#item));
             match item {
                 Item::Mod(item_mod) => {
                     module = Some(item_mod);
@@ -178,7 +202,6 @@ impl BlockWriter {
                 _ => {},
             }
         }
-
         let mut module = module.ok_or_else(|| anyhow!("fn_into_mod error"))?;
 
         // Insert functions into the module's content
@@ -190,7 +213,36 @@ impl BlockWriter {
             module.content = Some((syn::token::Brace::default(), functions.into_iter().map(Item::Fn).collect()));
         }
 
-        Ok(quote!(#module).to_string())
+        Ok(module)
+    }
+
+    pub fn content_into_fn(mut mod_block: ItemMod, fn_body: &String) -> Result<String> {
+        // Convert the fn_body string into a syn::Block
+        let fn_body: Block = syn::parse_str(fn_body)
+            .map_err(|e| anyhow!("Error parsing function body: {}", e))?;
+
+        // Flag to indicate if the function body has been inserted
+        let mut inserted = false;
+
+        // Iterate over the items in the module
+        for item in &mut mod_block.content.as_mut().unwrap().1 {
+            // Match only on functions
+            if let Item::Fn(ItemFn { ref mut block, .. }) = item {
+                // Insert the parsed fn_body into the function
+                *block = Box::from(fn_body.clone());
+                inserted = true;
+                break; // Assuming you only want to insert into the first found function
+            }
+        }
+        // Check if the insertion was successful
+        if !inserted {
+            return Err(anyhow!("No suitable function found for insertion"));
+        }
+        // Convert the modified module back into a string
+        let result = quote!(#mod_block).to_string();
+        println!("result: {:?}", result);
+
+        Ok(result)
     }
 }
 
@@ -199,15 +251,17 @@ mod tests {
     use super::*;
     #[test]
     fn test_dispatch_should_call_benchmarks() {
+        let lexer = Lexer::new("".to_string());
         let input = "benchmarks!";
-        let line = BlockParser::dispatch(input).unwrap();
+        let line = BlockParser::dispatch(input, &lexer).unwrap();
         assert_eq!(line.head, Some("benchmarks".to_string()));
     }
 
     #[test]
     fn test_dispatch_should_call_function() {
+        let lexer = Lexer::new("".to_string());
         let input = "propose_proposed {";
-        let line = BlockParser::dispatch(input).unwrap();
+        let line = BlockParser::dispatch(input, &lexer).unwrap();
         assert_eq!(line.head, Some("propose_proposed".to_string()));
     }
 

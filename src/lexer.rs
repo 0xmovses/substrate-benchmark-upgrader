@@ -19,9 +19,10 @@ pub struct BenchmarkLine {
     pub kind: LineKind,
     pub content: Option<String>,
     pub param_content: Option<BenchmarkParameter>,
+    pub fn_body: Option<String>,
 }
 
-pub struct Lexer(String);
+pub struct Lexer(pub(crate) String);
 
 impl Lexer {
     pub fn new(input: String) -> Self {
@@ -32,13 +33,14 @@ impl Lexer {
         let lines: Vec<&str> = self.0.split("\n").collect();
         let mut blocks: Vec<BenchmarkLine> = Vec::new();
         for line in lines {
-            match BlockParser::dispatch(line) {
+            match BlockParser::dispatch(line, self.clone()) {
                 Ok(line) => {
                     let benchmark_line = BenchmarkLine {
                         head: line.head,
                         kind: line.kind,
                         content: line.content,
                         param_content: line.param_content,
+                        fn_body: line.fn_body,
                     };
                     //println!("/n: {:?}", benchmark_line);
                     blocks.push(benchmark_line);

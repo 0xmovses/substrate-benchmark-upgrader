@@ -33,11 +33,19 @@ impl Writer {
                         if let Some(fn_signature) = gen.last() {
                             let complete_sig = ParamWriter::fn_gen(fn_input, fn_signature)?;
 
-                            gen.pop();
+                            //gen.pop();
                             gen.push(complete_sig);
 
                             let ast = parse_to_ast(gen.clone())?;
-                            gen.push(BlockWriter::fn_into_mod(ast)?);
+                            let fn_mod = BlockWriter::fn_into_mod(ast)?;
+                            if let Some(fn_body) = line.fn_body {
+                                let complete_fn= BlockWriter::content_into_fn(fn_mod, &fn_body).unwrap();
+                                println!("\n fn_mod: {:?}", complete_fn);
+                                gen.push(complete_fn);
+                            }
+
+                            //let complete_mod = BlockWriter::content_into_fn(ast.clone());
+                            //gen.push(fn_mod)
                         }
                     }
                 }
@@ -91,9 +99,12 @@ mod tests {
 
         let lexer = Lexer::new(input.to_string());
         let parsed_lines = lexer.parse().unwrap();
+        for lines in &parsed_lines {
+            println!("\n Parsed: {:?}", lines);
+        }
 
         let gen_lines= Writer::generate_module(parsed_lines).unwrap();
-        for line in gen_lines {
+        for line in &gen_lines {
             println!("\n Gen: {}", line);
         }
 
