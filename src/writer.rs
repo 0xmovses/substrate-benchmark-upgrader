@@ -37,25 +37,22 @@ impl Writer {
                         if let Some(fn_signature) = gen.last() {
                             let complete_sig = ParamWriter::fn_gen(fn_input, fn_signature)?;
 
-                            //gen.pop();
+                            gen.pop();
                             gen.push(complete_sig);
 
                             let ast = parse_to_ast(gen.clone())?;
                             let fn_mod = BlockWriter::fn_into_mod(ast)?;
 
-                            // the body is in the previous line get the previous line
-
+                            // the fn_body is in the previous line
                             if i > 0 {
                                 if let Some(fn_body) = &lines[i - 1].fn_body {
                                     let valid_block = BlockWriter::clean_code_block(fn_body)?;
                                     let complete_fn =
                                         BlockWriter::content_into_fn(fn_mod, valid_block).unwrap();
+                                    println!("complete_fn: {:?}", complete_fn);
                                     gen.push(complete_fn);
                                 }
                             }
-
-                            //let complete_mod = BlockWriter::content_into_fn(ast.clone());
-                            //gen.push(fn_mod)
                         }
                     }
                 }
