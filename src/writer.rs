@@ -49,7 +49,6 @@ impl Writer {
                                     let valid_block = BlockWriter::clean_code_block(fn_body)?;
                                     let complete_fn =
                                         BlockWriter::content_into_fn(fn_mod, valid_block).unwrap();
-                                    println!("complete_fn: {:?}", complete_fn);
                                     gen.push(complete_fn);
                                 }
                             }
@@ -62,14 +61,13 @@ impl Writer {
                     }
                 }
                 LineKind::Extrinsic => {
-                    let output = BlockWriter::extrinsic(&line.content.unwrap());
-                    println!("\n TODO output Extrinsic");
+                    let output = BlockWriter::extrinsic(&line.content.clone().unwrap());
+                    println!("output: {:?}", output);
+                    gen.push(output);
                 }
-                _ => {
-                    println!("\n Other Case No output");
-                }
+                _ => {}
             }
-            println!("\n Gen: {:?}", gen);
+            //println!("\n Gen: {:?}", gen);
         }
         Ok(gen)
     }
@@ -105,10 +103,6 @@ mod tests {
 
         let lexer = Lexer::new(input.to_string());
         let parsed_lines = lexer.parse().unwrap();
-        for lines in &parsed_lines {
-            println!("\n Parsed: {:?}", lines);
-        }
-
         let gen_lines = Writer::generate_module(parsed_lines).unwrap();
         for line in &gen_lines {
             println!("\n Gen: {}", line);

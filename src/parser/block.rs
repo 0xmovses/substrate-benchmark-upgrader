@@ -269,6 +269,17 @@ impl BlockWriter {
         syn::parse_str::<Block>(&block_str)
             .map_err(|e| anyhow!("Error parsing cleaned code into a Block: {}", e))
     }
+
+    pub fn extrinsic(input: &str) -> String {
+        let re = regex::Regex::new(r"(\w*):\s*_<T::(\w+)>\((\w+), (\w+)\)").unwrap();
+        let replacement = "#[extrinsic_call]\n_<T::${2}>(${3}, ${4})";
+        let output = re.replace(input, replacement).to_string();
+
+        // Regex to match '}' with any preceding whitespace (including tabs and newlines)
+        let trim_re = regex::Regex::new(r"[\s\t]*\}\s*").unwrap();
+        trim_re.replace_all(&output, "").to_string()
+    }
+
 }
 
 #[cfg(test)]
