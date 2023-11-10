@@ -9,22 +9,20 @@ use nom::{
     combinator::{cut, map},
     error::ParseError,
     sequence::{preceded, terminated, tuple},
-    IResult,
-    Err as NomErr,
+    Err as NomErr, IResult,
 };
 
 use crate::lexer::{BenchmarkLine, LineKind};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 
 pub struct ParamParser;
 pub struct ParamWriter;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BenchmarkParameter {
     pub name: String,
     pub range_start: u8,
     pub range_end: String,
 }
-
 
 impl Default for BenchmarkParameter {
     fn default() -> Self {
@@ -39,14 +37,14 @@ impl Default for BenchmarkParameter {
 impl ParamParser {
     pub fn dispatch(input: &str) -> Result<BenchmarkLine> {
         if input.trim_start().starts_with("let ") {
-            if input.trim_start().contains("=") && !input.trim_start().contains("=>"){
-               Ok(BenchmarkLine {
-                     head: None,
-                     kind: LineKind::Content,
-                     content: Some(input.to_string()),
-                     param_content: None,
-                     fn_body: None,
-               })
+            if input.trim_start().contains("=") && !input.trim_start().contains("=>") {
+                Ok(BenchmarkLine {
+                    head: None,
+                    kind: LineKind::Content,
+                    content: Some(input.to_string()),
+                    param_content: None,
+                    fn_body: None,
+                })
             } else {
                 match Self::let_declaration(input) {
                     Ok((_str, param)) => {
@@ -63,9 +61,7 @@ impl ParamParser {
                             fn_body: None,
                         })
                     }
-                    Err(e) => {
-                        Err(anyhow!("Error parsing parameter: {:?}", e))
-                    }
+                    Err(e) => Err(anyhow!("Error parsing parameter: {:?}", e)),
                 }
             }
         } else {
@@ -86,7 +82,10 @@ impl ParamParser {
 
         // Directly capture the range end after '..'
         let (input, range_end_val) = Self::range_end(input)?;
-        println!("name: {:?}, range_start: {:?}, range_end: {:?}", name, range_start_val, range_end_val);
+        println!(
+            "name: {:?}, range_start: {:?}, range_end: {:?}",
+            name, range_start_val, range_end_val
+        );
 
         Ok((
             input,
@@ -128,7 +127,10 @@ impl ParamWriter {
         };
 
         // Format the parameter string.
-        format!("{}: Linear<{}, {}>,", param.name, param.range_start, range_end)
+        format!(
+            "{}: Linear<{}, {}>,",
+            param.name, param.range_start, range_end
+        )
     }
 
     pub fn fn_gen(param_input: String, fn_signature: &String) -> Result<String> {
@@ -143,7 +145,9 @@ impl ParamWriter {
                 return Ok(format!("{}{}{}", start, param_input, end));
             }
         }
-        Err(anyhow!("Error: The function signature does not have the correct format."))
+        Err(anyhow!(
+            "Error: The function signature does not have the correct format."
+        ))
     }
 }
 
@@ -181,7 +185,10 @@ mod tests {
     fn test_invalid_param_declaration_no_range() {
         let input = "let foo =";
         let result = ParamParser::let_declaration(input);
-        assert!(result.is_err(), "The input should not be parsed successfully.");
+        assert!(
+            result.is_err(),
+            "The input should not be parsed successfully."
+        );
     }
 
     //#[test]

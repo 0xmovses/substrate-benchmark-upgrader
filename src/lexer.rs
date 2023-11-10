@@ -1,6 +1,6 @@
-use syn::{Item, parse_str};
 use crate::parser::block::BlockParser;
 use crate::parser::param::BenchmarkParameter;
+use syn::{parse_str, Item};
 
 #[derive(Debug, Clone)]
 pub enum LineKind {
@@ -13,7 +13,7 @@ pub enum LineKind {
     Content,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BenchmarkLine {
     pub head: Option<String>,
     pub kind: LineKind,
@@ -57,7 +57,6 @@ impl Lexer {
             Ok(blocks)
         }
     }
-
 }
 
 #[cfg(test)]
@@ -78,7 +77,7 @@ mod tests {
 		ensure!(Registrars::<T>::get().len() as u32 == r + 1, "Registrars not added.");
 	}"#;
 
-        let l= Lexer::new(input.to_string());
+        let l = Lexer::new(input.to_string());
         let parsed = l.parse().unwrap();
         for block in parsed {
             println!("\n{:?}\n", block);

@@ -1,3 +1,6 @@
+use crate::lexer::{BenchmarkLine, Lexer, LineKind};
+use crate::parser::param::ParamParser;
+use anyhow::{anyhow, Result};
 use nom::combinator::{cut, map_parser, not, peek, recognize};
 use nom::error::context;
 use nom::multi::{many0, many0_count, many1, separated_list0, separated_list1};
@@ -10,96 +13,72 @@ use nom::{
     sequence::preceded,
     IResult,
 };
-use crate::lexer::{BenchmarkLine, Lexer, LineKind};
-use crate::parser::param::ParamParser;
-use anyhow::{Result, anyhow};
 use quote::quote;
-use syn::{Block, Item, ItemFn, ItemMod, parse_quote};
+use syn::{parse_quote, Block, Item, ItemFn, ItemMod};
 
 pub struct BlockParser;
 
 impl BlockParser {
-    pub fn dispatch(line: &str, lexer: &Lexer) -> Result<BenchmarkLine>{
+    pub fn dispatch(line: &str, lexer: &Lexer) -> Result<BenchmarkLine> {
         let trimmed_line = line.trim_start();
 
         match trimmed_line {
-            _ if trimmed_line.starts_with("benchmarks") => {
-               match Self::benchmark(line) {
-                   Ok((_remaining, parsed)) => {
-                       Ok(BenchmarkLine{
-                           head: Some(parsed.to_string()),
-                           kind: LineKind::Mod,
-                           content: None,
-                           param_content: None,
-                           fn_body: None,
-                       })
-                   },
-                   Err(e) => {
-                       Err(anyhow!("Error parsing benchmark: {:?}", e))
-                   }
-               }
-            },
-            _ if trimmed_line.starts_with("let") => {
-                match ParamParser::dispatch(line) {
-                    Ok(parameter) => Ok(parameter),
-                    Err(e) => {
-                        Err(anyhow!("Error parsing parameter: {:?}", e))
-                    }
-                }
-            },
-            _ if trimmed_line.starts_with("ensure!") => {
-                match Self::ensure(line) {
-                    Ok((_remaining, parsed)) => {
-                        Ok(BenchmarkLine{
-                            head: None,
-                            kind: LineKind::Ensure,
-                            content: Some(parsed.to_string()),
-                            param_content: None,
-                            fn_body: None,
-                        })
-                    },
-                    Err(e) => {
-                        Err(anyhow!("Error parsing ensure: {:?}", e))
-                    }
-                }
-            },
-            _ if trimmed_line.starts_with("}:") => {
-                Ok(BenchmarkLine{
-                   head: None,
-                    kind: LineKind::Extrinsic,
-                    content: Some(line.to_string()),
+            _ if trimmed_line.starts_with("benchmarks") => match Self::benchmark(line) {
+                Ok((_remaining, parsed)) => Ok(BenchmarkLine {
+                    head: Some(parsed.to_string()),
+                    kind: LineKind::Mod,
+                    content: None,
                     param_content: None,
                     fn_body: None,
-                })
-            }
+                }),
+                Err(e) => Err(anyhow!("Error parsing benchmark: {:?}", e)),
+            },
+            _ if trimmed_line.starts_with("let") => match ParamParser::dispatch(line) {
+                Ok(parameter) => Ok(parameter),
+                Err(e) => Err(anyhow!("Error parsing parameter: {:?}", e)),
+            },
+            _ if trimmed_line.starts_with("ensure!") => match Self::ensure(line) {
+                Ok((_remaining, parsed)) => Ok(BenchmarkLine {
+                    head: None,
+                    kind: LineKind::Ensure,
+                    content: Some(parsed.to_string()),
+                    param_content: None,
+                    fn_body: None,
+                }),
+                Err(e) => Err(anyhow!("Error parsing ensure: {:?}", e)),
+            },
+            _ if trimmed_line.starts_with("}:") => Ok(BenchmarkLine {
+                head: None,
+                kind: LineKind::Extrinsic,
+                content: Some(line.to_string()),
+                param_content: None,
+                fn_body: None,
+            }),
             _ if trimmed_line.starts_with("(")
                 || trimmed_line.starts_with("T::")
-                || trimmed_line.starts_with("}") => {
-                Ok(BenchmarkLine{
+                || trimmed_line.starts_with("}") =>
+            {
+                Ok(BenchmarkLine {
                     head: None,
                     kind: LineKind::Content,
                     content: Some(line.to_string()),
                     param_content: None,
                     fn_body: None,
                 })
-            },
-            _ => {
-                match Self::function(line) {
-                    Ok((_remaining, parsed)) => {
-                        let (_remaining, fn_body )= Self::fn_body(parsed, lexer.0.as_str()).unwrap();
-                        Ok(BenchmarkLine {
-                            head: Some(parsed.to_string()),
-                            kind: LineKind::Fn,
-                            content: None,
-                            param_content: None,
-                            fn_body: Some(fn_body.to_string()),
-                        })
-                    },
-                    Err(e) => {
-                        Err(anyhow!("Error parsing function: {:?}", e))
-                    }
-                }
             }
+            _ => match Self::function(line) {
+                Ok((_remaining, parsed)) => {
+                    let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
+                    Ok(BenchmarkLine {
+                        head: Some(parsed.to_string()),
+                        kind: LineKind::Fn,
+                        content: None,
+                        param_content: None,
+                        fn_body: Some(fn_body.to_string()),
+                    })
+                }
+                Err(e) => Err(anyhow!("Error parsing function: {:?}", e)),
+            },
         }
     }
 
@@ -117,11 +96,8 @@ impl BlockParser {
 
     pub fn function(input: &str) -> IResult<&str, &str> {
         terminated(
-            preceded(
-                multispace0,
-                recognize(separated_list1(tag("_"), alpha1))
-            ),
-            preceded(multispace0, char('{'))
+            preceded(multispace0, recognize(separated_list1(tag("_"), alpha1))),
+            preceded(multispace0, char('{')),
         )(input)
     }
 
@@ -164,7 +140,10 @@ impl BlockWriter {
         // Check for benchmark-related keywords
         if input.trim_start().starts_with("benchmarks!") {
             Self::mod_item()
-        } else if input.trim_start().starts_with("benchmarks_instance_pallet!") {
+        } else if input
+            .trim_start()
+            .starts_with("benchmarks_instance_pallet!")
+        {
             Self::mod_instance_item()
         } else {
             "Error: Invalid benchmark module type".to_string()
@@ -191,15 +170,14 @@ impl BlockWriter {
         let mut functions: Vec<ItemFn> = Vec::new();
 
         for item in ast {
-            println!("item: {:?}", quote!(#item));
             match item {
                 Item::Mod(item_mod) => {
                     module = Some(item_mod);
-                },
+                }
                 Item::Fn(item_fn) => {
                     functions.push(item_fn);
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
         let mut module = module.ok_or_else(|| anyhow!("fn_into_mod error"))?;
@@ -210,17 +188,16 @@ impl BlockWriter {
                 content.push(Item::Fn(function));
             }
         } else {
-            module.content = Some((syn::token::Brace::default(), functions.into_iter().map(Item::Fn).collect()));
+            module.content = Some((
+                syn::token::Brace::default(),
+                functions.into_iter().map(Item::Fn).collect(),
+            ));
         }
 
         Ok(module)
     }
 
-    pub fn content_into_fn(mut mod_block: ItemMod, fn_body: &String) -> Result<String> {
-        // Convert the fn_body string into a syn::Block
-        let fn_body: Block = syn::parse_str(fn_body)
-            .map_err(|e| anyhow!("Error parsing function body: {}", e))?;
-
+    pub fn content_into_fn(mut mod_block: ItemMod, body: Block) -> Result<String> {
         // Flag to indicate if the function body has been inserted
         let mut inserted = false;
 
@@ -228,21 +205,54 @@ impl BlockWriter {
         for item in &mut mod_block.content.as_mut().unwrap().1 {
             // Match only on functions
             if let Item::Fn(ItemFn { ref mut block, .. }) = item {
-                // Insert the parsed fn_body into the function
-                *block = Box::from(fn_body.clone());
+                // Replace the existing block with the new one
+                *block = Box::new(body.clone());
                 inserted = true;
                 break; // Assuming you only want to insert into the first found function
             }
         }
+
         // Check if the insertion was successful
         if !inserted {
             return Err(anyhow!("No suitable function found for insertion"));
         }
+
         // Convert the modified module back into a string
         let result = quote!(#mod_block).to_string();
         println!("result: {:?}", result);
 
         Ok(result)
+    }
+
+    pub fn clean_code_block(code_block: &str) -> Result<Block> {
+        let cleaned_code = code_block
+            .split(';')
+            .map(|line| {
+                let trimmed_line = line.trim();
+                if let Some(start_idx) = trimmed_line.find("=>") {
+                    trimmed_line[start_idx + 2..].trim()
+                } else {
+                    trimmed_line
+                }
+            })
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                if line.ends_with(';') {
+                    line.to_string()
+                } else {
+                    format!("{};", line)
+                }
+            }) // Ensure each line ends with a semicolon
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        // Wrap the cleaned code in braces to form a valid block
+        let block_str = format!("{{ {} }}", cleaned_code);
+        println!("block_str: {:?}", block_str);
+
+        // Parse the cleaned code into a syn::Block
+        syn::parse_str::<Block>(&block_str)
+            .map_err(|e| anyhow!("Error parsing cleaned code into a Block: {}", e))
     }
 }
 
