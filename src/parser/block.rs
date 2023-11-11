@@ -1,5 +1,5 @@
 use crate::lexer::{BenchmarkLine, Lexer, LineKind};
-use crate::parser::param::ParamParser;
+use crate::parser::{extrinsic::ExtrinsicCall, param::ParamParser};
 use anyhow::{anyhow, Result};
 use nom::combinator::{cut, map_parser, not, peek, recognize};
 use nom::error::context;
@@ -14,7 +14,8 @@ use nom::{
     IResult,
 };
 use quote::quote;
-use syn::{parse_quote, Block, Item, ItemFn, ItemMod};
+use syn::{parse_quote, Block, Item, ItemFn, ItemMod, Stmt, parse2, ExprMacro, Expr};
+use proc_macro2::TokenStream;
 
 pub struct BlockParser;
 
@@ -235,6 +236,37 @@ impl BlockWriter {
         // Convert the modified module back into a string
         let result = quote!(#mod_block).to_string();
         println!("result: {:?}", result);
+
+        Ok(result)
+    }
+
+    pub fn extrinsic_into_fn(ast: Vec<Item>, ext: &str) -> Result<String> {
+        println!("ext: {:?}", ext);
+        let mut modified_ast = ast;
+        let mut modified_function: Option<&mut ItemFn> = None;
+
+        // Find the last function in the AST
+        for item in modified_ast.iter_mut() {
+            if let Item::Fn(ref mut function) = item {
+                modified_function = Some(function);
+            }
+        }
+
+        if let Some(function) = modified_function {
+            // Parse the extrinsic string into a TokenStream
+            let insert_tokens: TokenStream = ext.parse().expect("Failed to parse into TokenStream");
+            println!("insert_tokens: {:?}", insert_tokens);
+            let extrinsic= parse2::<ExtrinsicCall>(insert_tokens)?;
+            let stmt = Stmt::Expr(Expr::Verbatim(quote! { #extrinsic }));
+            function.block.stmts.push(stmt);
+        } else {
+            return Err(anyhow!("No function found in AST"));
+        }
+
+        // Convert the modified AST back to a string
+        let result = quote! {
+        #( #modified_ast )*
+    }.to_string();
 
         Ok(result)
     }

@@ -4,7 +4,7 @@ use crate::parser::{
     param::{ParamParser, ParamWriter},
 };
 use anyhow::{anyhow, Result};
-use syn::{parse_str, Item};
+use syn::{parse_str, Item, ItemMod};
 
 pub struct Writer;
 
@@ -40,7 +40,7 @@ impl Writer {
                             gen.pop();
                             gen.push(complete_sig);
 
-                            let ast = parse_to_ast(gen.clone())?;
+                            let ast = Self::parse_to_ast(gen.clone())?;
                             let fn_mod = BlockWriter::fn_into_mod(ast)?;
 
                             // the fn_body is in the previous line
@@ -62,28 +62,37 @@ impl Writer {
                 }
                 LineKind::Extrinsic => {
                     let output = BlockWriter::extrinsic(&line.content.clone().unwrap());
-                    println!("output: {:?}", output);
-                    gen.push(output);
+                    let ast = Self::parse_to_ast(gen.clone())?;
+                    let _ = BlockWriter::extrinsic_into_fn(ast, &output)?;
+                    //gen.push(output);
                 }
                 _ => {}
             }
-            //println!("\n Gen: {:?}", gen);
+            println!("i = {:?}", i);
         }
         Ok(gen)
     }
+
+    pub fn parse_to_ast(lines: Vec<String>) -> Result<Vec<Item>> {
+        let mut ast_nodes: Vec<Item> = Vec::new();
+        for line in lines {
+            let ast_node = parse_str::<Item>(&line)?;
+            ast_nodes.push(ast_node);
+        }
+        Ok(ast_nodes)
+    }
+
+    fn validate(code: &str) -> bool {
+        let token_stream: proc_macro2::TokenStream = code.parse().unwrap();
+        syn::parse::<ItemMod>(token_stream.into()).is_ok()
+    }
 }
 
-pub fn parse_to_ast(lines: Vec<String>) -> Result<Vec<Item>> {
-    let mut ast_nodes: Vec<Item> = Vec::new();
-    for line in lines {
-        let ast_node = parse_str::<Item>(&line)?;
-        ast_nodes.push(ast_node);
-    }
-    Ok(ast_nodes)
-}
+
 
 #[cfg(test)]
 mod tests {
+    use syn::ItemMod;
     use crate::lexer::Lexer;
     use crate::writer::Writer;
 
@@ -103,9 +112,9 @@ mod tests {
 
         let lexer = Lexer::new(input.to_string());
         let parsed_lines = lexer.parse().unwrap();
-        let gen_lines = Writer::generate_module(parsed_lines).unwrap();
-        for line in &gen_lines {
-            println!("\n Gen: {}", line);
+        let gen = Writer::generate_module(parsed_lines).unwrap();
+        for line in gen {
+            println!("line: {:?}", line);
         }
     }
 }
