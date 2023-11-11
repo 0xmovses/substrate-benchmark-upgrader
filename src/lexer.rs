@@ -5,12 +5,16 @@ use syn::{parse_str, Item};
 #[derive(Debug, Clone)]
 pub enum LineKind {
     Mod,
-    Fn,
+    FnDeclaration,
     FnParam,
-    Verify,
+    FnBody,
+}
+
+pub enum FnBody {
+    Content,
     Ensure,
     Extrinsic,
-    Content,
+    Verify,
 }
 
 #[derive(Debug, Clone)]

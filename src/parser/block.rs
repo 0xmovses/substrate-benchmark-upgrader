@@ -14,7 +14,8 @@ use nom::{
     IResult,
 };
 use quote::quote;
-use syn::{parse_quote, Block, Item, ItemFn, ItemMod};
+use syn::{parse_quote, Block, Item, ItemFn, ItemMod, Stmt, parse_str};
+use proc_macro2::TokenStream;
 
 pub struct BlockParser;
 
@@ -40,7 +41,7 @@ impl BlockParser {
             _ if trimmed_line.starts_with("ensure!") => match Self::ensure(line) {
                 Ok((_remaining, parsed)) => Ok(BenchmarkLine {
                     head: None,
-                    kind: LineKind::Ensure,
+                    kind: LineKind::FnBody::Ensure,
                     content: Some(parsed.to_string()),
                     param_content: None,
                     fn_body: None,
@@ -53,7 +54,7 @@ impl BlockParser {
                         let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
                         Ok(BenchmarkLine {
                             head: Some(parsed.to_string()),
-                            kind: LineKind::Verify,
+                            kind: LineKind::FnBody::Verify,
                             content: None,
                             param_content: None,
                             fn_body: Some(fn_body.to_string()),
@@ -64,7 +65,7 @@ impl BlockParser {
             }
             _ if trimmed_line.starts_with("}:") => Ok(BenchmarkLine {
                 head: None,
-                kind: LineKind::Extrinsic,
+                kind: LineKind::FnBody::Extrinsic,
                 content: Some(line.to_string()),
                 param_content: None,
                 fn_body: None,
@@ -75,7 +76,7 @@ impl BlockParser {
             {
                 Ok(BenchmarkLine {
                     head: None,
-                    kind: LineKind::Content,
+                    kind: LineKind::FnBody::Content,
                     content: Some(line.to_string()),
                     param_content: None,
                     fn_body: None,
@@ -86,7 +87,7 @@ impl BlockParser {
                     let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
                     Ok(BenchmarkLine {
                         head: Some(parsed.to_string()),
-                        kind: LineKind::Fn,
+                        kind: LineKind::FnBody::Content,
                         content: None,
                         param_content: None,
                         fn_body: Some(fn_body.to_string()),
@@ -274,10 +275,43 @@ impl BlockWriter {
         let re = regex::Regex::new(r"(\w*):\s*_<T::(\w+)>\((\w+), (\w+)\)").unwrap();
         let replacement = "#[extrinsic_call]\n_<T::${2}>(${3}, ${4})";
         let output = re.replace(input, replacement).to_string();
-
-        // Regex to match '}' with any preceding whitespace (including tabs and newlines)
         let trim_re = regex::Regex::new(r"[\s\t]*\}\s*").unwrap();
         trim_re.replace_all(&output, "").to_string()
+    }
+
+    pub fn extrinsic_into_fn(ast: Vec<Item>, insert_str: &str) -> Result<String> {
+        let mut updated_ast = Vec::new();
+
+        for item in ast {
+            // Check if the item is a function and modify it
+            if let Item::Fn(mut function) = item {
+                // Create tokens from the insert_str
+                let parsed_stmt: Stmt = syn::parse2(quote!({ #insert_str })).unwrap();
+
+                // Insert the statement into the function body
+                function.block.stmts.insert(0, parsed_stmt);
+
+                updated_ast.push(Item::Fn(function));
+            } else {
+                // For all other items, just add them back to the AST
+                updated_ast.push(item);
+            }
+        }
+
+        // Convert the modified AST back to a string
+        let result = updated_ast.into_iter().map(|item| quote!(#item).to_string()).collect::<Vec<_>>().join("\n");
+        println!("ext result: {:?}", result);
+
+        Ok(result)
+    }
+
+    pub fn trim_penultimate(line: &BenchmarkLine) -> Result<String> {
+       if let Some(content) = &line.content {
+
+          Ok("".to_string())
+       } else {
+              Err(anyhow!("Error trimming penultimate line"))
+       }
     }
 
 }
