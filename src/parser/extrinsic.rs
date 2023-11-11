@@ -13,6 +13,7 @@ pub struct ExtrinsicCall {
 impl Parse for ExtrinsicCall {
     fn parse(input: ParseStream) -> Result<Self> {
         let attribute = Attribute::parse_outer(input)?;
+
         let underscore: Token![_] = input.parse()?;
         let runtime_origin: Type = {
             input.parse::<Token![<]>()?;
@@ -35,6 +36,9 @@ impl Parse for ExtrinsicCall {
 
 impl ToTokens for ExtrinsicCall {
     fn to_tokens(&self, tokens: &mut TokenStream) {
+        for attr in &self.attribute {
+            attr.to_tokens(tokens);
+        }
         self.underscore.to_tokens(tokens);
         self.runtime_origin.to_tokens(tokens);
         syn::token::Paren::default().surround(tokens, |tokens| {

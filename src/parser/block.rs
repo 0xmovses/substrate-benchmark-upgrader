@@ -241,7 +241,6 @@ impl BlockWriter {
     }
 
     pub fn extrinsic_into_fn(ast: Vec<Item>, ext: &str) -> Result<String> {
-        println!("ext: {:?}", ext);
         let mut modified_ast = ast;
         let mut modified_function: Option<&mut ItemFn> = None;
 
@@ -254,22 +253,25 @@ impl BlockWriter {
 
         if let Some(function) = modified_function {
             // Parse the extrinsic string into a TokenStream
+            println!("ext: {:?}", ext);
             let insert_tokens: TokenStream = ext.parse().expect("Failed to parse into TokenStream");
-            println!("insert_tokens: {:?}", insert_tokens);
-            let extrinsic= parse2::<ExtrinsicCall>(insert_tokens)?;
+            let extrinsic = parse2::<ExtrinsicCall>(insert_tokens)?;
+
+            // Convert the parsed ExtrinsicCall into a Stmt
             let stmt = Stmt::Expr(Expr::Verbatim(quote! { #extrinsic }));
             function.block.stmts.push(stmt);
-        } else {
+       } else {
             return Err(anyhow!("No function found in AST"));
         }
 
         // Convert the modified AST back to a string
         let result = quote! {
         #( #modified_ast )*
-    }.to_string();
+        }.to_string();
 
         Ok(result)
     }
+
 
     pub fn clean_code_block(code_block: &str) -> Result<Block> {
         let cleaned_code = code_block

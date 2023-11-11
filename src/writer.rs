@@ -63,8 +63,9 @@ impl Writer {
                 LineKind::Extrinsic => {
                     let output = BlockWriter::extrinsic(&line.content.clone().unwrap());
                     let ast = Self::parse_to_ast(gen.clone())?;
-                    let _ = BlockWriter::extrinsic_into_fn(ast, &output)?;
-                    //gen.push(output);
+                    let output = BlockWriter::extrinsic_into_fn(ast, &output)?;
+                    println!("output: {:?}", output);
+                    gen.push(output);
                 }
                 _ => {}
             }
