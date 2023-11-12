@@ -16,6 +16,7 @@ use nom::{
 use quote::quote;
 use syn::{parse_quote, Block, Item, ItemFn, ItemMod, Stmt, parse2, ExprMacro, Expr};
 use proc_macro2::TokenStream;
+use syn::punctuated::Pair::Punctuated;
 
 pub struct BlockParser;
 
@@ -241,19 +242,26 @@ impl BlockWriter {
     }
 
     pub fn extrinsic_into_fn(ast: Vec<Item>, ext: &str) -> Result<String> {
-        let mut modified_ast = ast;
-        let mut modified_function: Option<&mut ItemFn> = None;
-
-        // Find the last function in the AST
-        for item in modified_ast.iter_mut() {
-            if let Item::Fn(ref mut function) = item {
-                modified_function = Some(function);
+        let mut modified_ast = ast.clone();
+        let mut last_mod_function: Option<&mut ItemFn> = None;
+        // Iterate in reverse to find the last mod block
+        for item in modified_ast.iter_mut().rev() {
+            if let Item::Mod(ItemMod { content: Some((_, items)), .. }) = item {
+                // Iterate in reverse to find the last function within this mod block
+                for item in items.iter_mut().rev() {
+                    if let Item::Fn(function) = item {
+                        last_mod_function = Some(function);
+                        break;
+                    }
+                }
+                if last_mod_function.is_some() {
+                    break;
+                }
             }
         }
 
-        if let Some(function) = modified_function {
+        if let Some(function) = last_mod_function {
             // Parse the extrinsic string into a TokenStream
-            println!("ext: {:?}", ext);
             let insert_tokens: TokenStream = ext.parse().expect("Failed to parse into TokenStream");
             let extrinsic = parse2::<ExtrinsicCall>(insert_tokens)?;
 
@@ -264,12 +272,47 @@ impl BlockWriter {
             return Err(anyhow!("No function found in AST"));
         }
 
+        let cleaned_ast = Self::remove_duplicate_mods(modified_ast);
+
         // Convert the modified AST back to a string
         let result = quote! {
-        #( #modified_ast )*
+        #( #cleaned_ast )*
         }.to_string();
 
+        println!("result extrinsic: {:?}", result);
+
         Ok(result)
+    }
+
+    pub fn remove_duplicate_mods(ast: Vec<Item>) -> Vec<Item> {
+        let mut new_ast = Vec::new();
+        let mut last_non_empty_benchmarks_mod: Option<Item> = None;
+
+        for item in ast {
+            if let Item::Mod(ItemMod { ident, content: Some((_, items)), .. }) = &item {
+                if ident == "benchmarks" {
+                    // Check if the mod contains any function with a body
+                    let contains_non_empty_fn = items.iter().any(|item| {
+                        matches!(item, Item::Fn(ItemFn { block, .. }) if !block.stmts.is_empty())
+                    });
+
+                    if contains_non_empty_fn {
+                        // Replace the last non-empty benchmarks mod with this one
+                        last_non_empty_benchmarks_mod = Some(item.clone());
+                    }
+                } else {
+                    // Keep all other items
+                    new_ast.push(item.clone());
+                }
+            }
+        }
+
+        // Add the last non-empty benchmarks mod to the new AST, if any
+        if let Some(mod_item) = last_non_empty_benchmarks_mod {
+            new_ast.push(mod_item);
+        }
+
+        new_ast
     }
 
 

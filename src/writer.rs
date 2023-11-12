@@ -40,7 +40,7 @@ impl Writer {
                             gen.pop();
                             gen.push(complete_sig);
 
-                            let ast = Self::parse_to_ast(gen.clone())?;
+                            let ast = Self::parse_vec_to_ast(gen.clone())?;
                             let fn_mod = BlockWriter::fn_into_mod(ast)?;
 
                             // the fn_body is in the previous line
@@ -62,19 +62,17 @@ impl Writer {
                 }
                 LineKind::Extrinsic => {
                     let output = BlockWriter::extrinsic(&line.content.clone().unwrap());
-                    let ast = Self::parse_to_ast(gen.clone())?;
+                    let ast = Self::parse_vec_to_ast(gen.clone())?;
                     let output = BlockWriter::extrinsic_into_fn(ast, &output)?;
-                    println!("output: {:?}", output);
                     gen.push(output);
                 }
                 _ => {}
             }
-            println!("i = {:?}", i);
         }
         Ok(gen)
     }
 
-    pub fn parse_to_ast(lines: Vec<String>) -> Result<Vec<Item>> {
+    pub fn parse_vec_to_ast(lines: Vec<String>) -> Result<Vec<Item>> {
         let mut ast_nodes: Vec<Item> = Vec::new();
         for line in lines {
             let ast_node = parse_str::<Item>(&line)?;
