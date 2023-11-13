@@ -23,6 +23,7 @@ pub struct BlockParser;
 impl BlockParser {
     pub fn dispatch(line: &str, lexer: &Lexer) -> Result<BenchmarkLine> {
         let trimmed_line = line.trim_start();
+        println!("trimmed_line: {:?}", trimmed_line);
 
         match trimmed_line {
             _ if trimmed_line.starts_with("benchmarks") => match Self::benchmark(line) {
@@ -49,10 +50,26 @@ impl BlockParser {
                 }),
                 Err(e) => Err(anyhow!("Error parsing ensure: {:?}", e)),
             },
+            _ if Self::is_function_declaration(trimmed_line) => match Self::function(line) {
+                Ok((_remaining, parsed)) => {
+                    println!("matches function: {:?}", parsed);
+                    let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
+                    Ok(BenchmarkLine {
+                        head: Some(parsed.to_string()),
+                        kind: LineKind::Fn,
+                        content: None,
+                        param_content: None,
+                        fn_body: Some(fn_body.to_string()),
+                    })
+                }
+                Err(e) => Err(anyhow!("Error parsing function: {:?}", e)),
+            },
             _ if trimmed_line.starts_with("verify") => {
                 match Self::function(line) {
                     Ok((_remaining, parsed)) => {
                         let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
+
+                        println!("matches verify");
                         Ok(BenchmarkLine {
                             head: Some(parsed.to_string()),
                             kind: LineKind::Verify,
@@ -75,6 +92,7 @@ impl BlockParser {
                 || trimmed_line.starts_with("T::")
                 || trimmed_line.starts_with("}") =>
             {
+               println!("matches other chars");
                 Ok(BenchmarkLine {
                     head: None,
                     kind: LineKind::Content,
@@ -83,20 +101,35 @@ impl BlockParser {
                     fn_body: None,
                 })
             }
-            _ => match Self::function(line) {
-                Ok((_remaining, parsed)) => {
-                    let (_remaining, fn_body) = Self::fn_body(parsed, lexer.0.as_str()).unwrap();
-                    Ok(BenchmarkLine {
-                        head: Some(parsed.to_string()),
-                        kind: LineKind::Fn,
-                        content: None,
-                        param_content: None,
-                        fn_body: Some(fn_body.to_string()),
-                    })
-                }
-                Err(e) => Err(anyhow!("Error parsing function: {:?}", e)),
-            },
+            _ if trimmed_line.starts_with("for i") =>  {
+                println!("matches for line: {:?}", trimmed_line);
+                Ok(BenchmarkLine {
+                head: None,
+                kind: LineKind::Content,
+                content: Some(line.to_string()),
+                param_content: None,
+                fn_body: None,
+            }) },
+            _ => {
+                println!("matches other line: {:?}", trimmed_line);
+                Ok(BenchmarkLine {
+                    head: None,
+                    kind: LineKind::Content,
+                    content: Some(line.to_string()),
+                    param_content: None,
+                    fn_body: None,
+                })
+            }
         }
+    }
+
+    fn is_function_declaration(line: &str) -> bool {
+        let trimmed_line = line.trim();
+        if trimmed_line.contains("for") {
+            return false;
+        }
+        let without_whitespace = trimmed_line.split_whitespace().collect::<String>();
+        without_whitespace.ends_with("{")
     }
 
     pub fn benchmark(input: &str) -> IResult<&str, &str> {

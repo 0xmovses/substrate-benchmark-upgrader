@@ -11,6 +11,7 @@ pub enum LineKind {
     Ensure,
     Extrinsic,
     Content,
+    ImplMacro,
 }
 
 #[derive(Debug, Clone)]

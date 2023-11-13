@@ -134,6 +134,7 @@ impl ParamWriter {
     }
 
     pub fn fn_gen(param_input: String, fn_signature: &String) -> Result<String> {
+        println!("fn_gen: {:?}, {:?}", param_input, fn_signature);
         if let Some(open_paren_pos) = fn_signature.find('(') {
             if let Some(close_paren_pos) = fn_signature[open_paren_pos..].find(')') {
                 let close_paren_pos = open_paren_pos + close_paren_pos;

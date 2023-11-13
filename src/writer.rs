@@ -14,7 +14,6 @@ impl Writer {
         let mut gen: Vec<String> = Vec::new();
         for i in 0..lines.len() {
             let line = &lines[i];
-            println!("\n input line: {:?}", line);
             match line.kind {
                 LineKind::Mod => {
                     if let Some(_head) = &line.head {
@@ -33,9 +32,11 @@ impl Writer {
                 LineKind::FnParam => {
                     if let Some(ref param_content) = line.param_content {
                         println!("\n -> is FnParam");
+                        println!("\n -> param_content: {:?}", param_content);
                         let fn_input = ParamWriter::fn_input(&param_content);
                         if let Some(fn_signature) = gen.last() {
                             let complete_sig = ParamWriter::fn_gen(fn_input, fn_signature)?;
+                            println!("complete_sig");
 
                             gen.pop();
                             gen.push(complete_sig);
@@ -91,12 +92,12 @@ impl Writer {
 
 #[cfg(test)]
 mod tests {
-    use syn::ItemMod;
     use crate::lexer::Lexer;
     use crate::writer::Writer;
+    use std::fs;
 
     #[test]
-    fn test_lexer() {
+    fn test_writer_should_generate_with_single_case() {
         let input = r#"benchmarks! {
 	add_registrar {
 		let r in 1 .. T::MaxRegistrars::get() - 1 => add_registrars::<T>(r)?;
@@ -112,8 +113,24 @@ mod tests {
         let lexer = Lexer::new(input.to_string());
         let parsed_lines = lexer.parse().unwrap();
         let gen = Writer::generate_module(parsed_lines).unwrap();
-        for line in gen {
-            println!("line: {:?}", line);
+        assert!(gen.len() > 0)
+
+    }
+
+    #[test]
+    fn test_writer_should_generate_with_file() {
+        let file_path = "src/fixtures/benchmark_v1.rs";
+
+        // Read the contents of the file into a string
+        if let Ok(input) = fs::read_to_string(file_path) {
+            let lexer = Lexer::new(input.to_string());
+            let parsed_lines = lexer.parse().unwrap();
+            let gen = Writer::generate_module(parsed_lines).unwrap();
+            assert!(gen.len() > 0)
+        } else {
+            // Handle the case where reading the file fails
+            panic!("Failed to read the file at path: {}", file_path);
         }
+
     }
 }
