@@ -40,16 +40,6 @@ impl BlockParser {
                 Ok(parameter) => Ok(parameter),
                 Err(e) => Err(anyhow!("Error parsing parameter: {:?}", e)),
             },
-            _ if trimmed_line.starts_with("ensure!") => match Self::ensure(line) {
-                Ok((_remaining, parsed)) => Ok(BenchmarkLine {
-                    head: None,
-                    kind: LineKind::Ensure,
-                    content: Some(parsed.to_string()),
-                    param_content: None,
-                    fn_body: None,
-                }),
-                Err(e) => Err(anyhow!("Error parsing ensure: {:?}", e)),
-            },
             _ if Self::is_function_declaration(trimmed_line) => match Self::function(line) {
                 Ok((_remaining, parsed)) => {
                     println!("matches function: {:?}", parsed);
