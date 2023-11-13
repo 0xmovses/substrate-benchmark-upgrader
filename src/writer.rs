@@ -1,32 +1,52 @@
-use crate::lexer::{BenchmarkLine, Lexer, LineKind};
+use crate::lexer::{BenchmarkLine, Lexer, LineKind, BenchmarkParameter};
 use crate::parser::{
     block::{BlockParser, BlockWriter},
     param::{ParamParser, ParamWriter},
 };
 use anyhow::{anyhow, Result};
 use syn::{parse_str, Item, ItemMod};
+use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub struct BenchmarkModule {
+    tests: HashMap<String, BenchmarkFn>,
+}
+
+impl BenchmarkModule {
+   new() -> Self {
+        Self {
+            tests: HashMap::new(),
+        }
+    }
+}
+
+pub struct BenchmarkFn {
+    pub sig: String,
+    pub params: Option<Vec<BenchmarkParameter>>,
+    pub body: String,
+}
 pub struct Writer;
 
 impl Writer {
     // Generates the entire module with benchmarks from a block of DSL code.
-    pub fn generate_module(lines: Vec<BenchmarkLine>) -> Result<Vec<String>> {
-        let mut gen: Vec<String> = Vec::new();
+    pub fn generate_module(lines: Vec<BenchmarkLine>) -> Result<BenchmarkModule> {
+        let mut module = BenchmarkModule::new();
         for i in 0..lines.len() {
             let line = &lines[i];
             match line.kind {
                 LineKind::Mod => {
                     if let Some(_head) = &line.head {
                         println!("\n -> is Mod");
-                        let output = BlockWriter::mod_item();
-                        gen.push(output);
+
                     }
                 }
                 LineKind::Fn => {
                     if let Some(head) = &line.head {
-                        println!("\n -> is Fn");
                         let output = BlockWriter::fn_item(&head);
-                        gen.push(output);
+                        module.tests.insert(head.to_string(), BenchmarkFn{
+                            sig: output,
+                            params: None,
+                            body: line.fn_body.to_string(),});
                     }
                 }
                 LineKind::FnParam => {

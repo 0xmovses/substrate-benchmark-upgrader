@@ -14,6 +14,7 @@ pub enum LineKind {
     ImplMacro,
 }
 
+
 #[derive(Debug, Clone)]
 pub struct BenchmarkLine {
     pub head: Option<String>,
@@ -22,6 +23,10 @@ pub struct BenchmarkLine {
     pub param_content: Option<BenchmarkParameter>,
     pub fn_body: Option<String>,
 }
+
+
+
+
 
 pub struct Lexer(pub(crate) String);
 
